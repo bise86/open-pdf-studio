@@ -34,6 +34,13 @@ test('webversie zonder pad: ook PDF.js', () => {
   );
 });
 
+test('mobiele builds gebruiken PDF.js omdat ze geen PDFium-bibliotheek bundelen', () => {
+  assert.equal(
+    pdfjsFallbackNodig({ inTauri: true, hasFilePath: true, isMobile: true }),
+    true,
+  );
+});
+
 test('viewport-pad heeft de pagina geclaimd: PDF.js blijft eraf', () => {
   // Twee tekenaars op hetzelfde canvas geeft geflikker; de RAF-lus wint.
   for (const inTauri of [true, false]) {

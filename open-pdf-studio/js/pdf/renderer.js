@@ -1,5 +1,5 @@
 import { state, getActiveDocument, getPageRotation, setPageRotation } from '../core/state.js';
-import { isTauri, invoke } from '../core/platform.js';
+import { isTauri, isMobile, invoke } from '../core/platform.js';
 import { pdfjsFallbackNodig } from './render-route.js';
 import { bepaalOverlayMaat, pasOverlayMaatToe } from './overlay-canvas-size.js';
 import { paginaGetekend } from './pagina-getekend.js';
@@ -544,6 +544,7 @@ async function _renderPageImpl(pageNum) {
   if (pdfjsFallbackNodig({
     inTauri: _canUseTauri,
     hasFilePath: _hasFilePath,
+    isMobile: isMobile(),
     viewportNamHetOver: _skipBitmapRender,
   })) {
     try {
@@ -769,7 +770,7 @@ export async function renderPageOffscreen(pageNum) {
   // Zonder Tauri (webversie) of zonder bestandspad kan PDFium niet; dan tekent
   // PDF.js. Dit is GEEN stille terugval voor een Rust-fout — die blijft hard
   // falen hieronder, zodat een rasterbug zichtbaar blijft.
-  if (pdfjsFallbackNodig({ inTauri: isTauri(), hasFilePath: !!doc.filePath })) {
+  if (pdfjsFallbackNodig({ inTauri: isTauri(), hasFilePath: !!doc.filePath, isMobile: isMobile() })) {
     try {
       await tekenPaginaMetPdfJs(page, viewport, pdfCanvas);
       if (_isStaleDoc(doc)) return;
@@ -1187,7 +1188,7 @@ async function renderContinuousPage(pageNum) {
   const pdfCtxEl = pdfCanvasEl.getContext('2d');
 
   // Webversie/documenten zonder pad: PDF.js tekent. Zie render-route.js.
-  const _pdfjsPad = pdfjsFallbackNodig({ inTauri: isTauri(), hasFilePath: !!doc.filePath });
+  const _pdfjsPad = pdfjsFallbackNodig({ inTauri: isTauri(), hasFilePath: !!doc.filePath, isMobile: isMobile() });
 
   // ─── PERF FIX #1 + #2 + #3 (BARN measurement scaffold) ───────────────
   //  #1: Drop the DPR multiplier — single-page mode renders at bare

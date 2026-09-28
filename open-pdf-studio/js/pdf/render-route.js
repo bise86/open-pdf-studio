@@ -23,12 +23,14 @@
  * @param {object} o
  * @param {boolean} o.inTauri            Draait de app in de Tauri-schil?
  * @param {boolean} o.hasFilePath        Heeft het document een pad op schijf?
+ * @param {boolean} [o.isMobile]         Mobiele builds hebben geen gebundelde
+ *   PDFium; gebruik daar de bytes die PDF.js al heeft.
  * @param {boolean} [o.viewportNamHetOver] Heeft het viewport-pad (vector of
  *   raster) de pagina al geclaimd? Dan tekent de RAF-lus en moet PDF.js
  *   afblijven — anders vechten twee tekenaars om hetzelfde canvas.
  * @returns {boolean}
  */
-export function pdfjsFallbackNodig({ inTauri, hasFilePath, viewportNamHetOver = false }) {
+export function pdfjsFallbackNodig({ inTauri, hasFilePath, isMobile = false, viewportNamHetOver = false }) {
   if (viewportNamHetOver) return false;
-  return !inTauri || !hasFilePath;
+  return isMobile || !inTauri || !hasFilePath;
 }

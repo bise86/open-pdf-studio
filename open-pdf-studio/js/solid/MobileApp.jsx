@@ -1,7 +1,7 @@
 import { createSignal, onMount, onCleanup, Show, For } from 'solid-js';
 import { useTranslation } from '../i18n/useTranslation.js';
 import { state, getActiveDocument } from '../core/state.js';
-import { isTauri, extractFileName } from '../core/platform.js';
+import { isTauri, isMobile, extractFileName } from '../core/platform.js';
 import { loadPDF, loadPDFIfNeeded } from '../pdf/loader.js';
 import { fitWidth, fitPage, goToPage, rotatePage, setZoom } from '../pdf/renderer.js';
 import { createTab } from '../ui/chrome/tabs.js';
@@ -71,14 +71,21 @@ export default function MobileApp() {
 
   // --- File operations ---
 
-  // Strategy: Try Tauri dialog first (gives us a content:// URI we can save back to).
-  // If dialog plugin is unavailable or fails, fall back to HTML <input type="file">
-  // which works on every Android WebView (WRY implements onShowFileChooser).
+  // Android's native dialog returns a content:// URI. That URI is not a stable
+  // filesystem path for the Rust renderer, and older Android WebViews can also
+  // reject it from the Tauri fs plugin. The HTML picker gives us the bytes
+  // directly, so PDF.js can render the document without depending on URI
+  // resolution. Desktop keeps the native dialog and filesystem path flow.
 
   async function handleOpen() {
     setDrawerOpen(false);
 
-    // Attempt 1: Tauri dialog plugin (preferred — returns a path we can save to)
+    if (isMobile()) {
+      fileInputRef?.click();
+      return;
+    }
+
+    // Desktop: use the native dialog and filesystem path.
     if (isTauri() && window.__TAURI__?.dialog) {
       try {
         const path = await window.__TAURI__.dialog.open({

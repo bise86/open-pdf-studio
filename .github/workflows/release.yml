@@ -527,6 +527,9 @@ jobs:
         env:
           NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.0.12077973
 
+      - name: Configure Android 10+ file-read permission
+        run: node scripts/configure-android-storage.mjs
+
       - name: Build Android ARM64 APK (Android 10+)
         run: npx tauri android build --apk --target aarch64
         env:
