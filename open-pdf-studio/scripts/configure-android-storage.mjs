@@ -51,21 +51,39 @@ export function addRuntimeReadPermission(source) {
   if (!classMatch) throw new Error('MainActivity.kt does not contain a Tauri MainActivity class');
 
   const classStart = classMatch.index + classMatch[0].length;
-  const body = `
-    // ${MAIN_ACTIVITY_MARKER}: Android 10-12 require runtime storage permission.
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+  const permissionCode = `
+        // ${MAIN_ACTIVITY_MARKER}: Android 10-12 require runtime storage permission.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
             Build.VERSION.SDK_INT <= 32 &&
             checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE), STORAGE_PERMISSION_REQUEST_CODE)
-        }
-    }
+        }`;
+  const companion = `
 
     companion object {
         private const val STORAGE_PERMISSION_REQUEST_CODE = 4101
     }
 `;
+
+  // Tauri's generated activity already defines onCreate(). Add the request to
+  // that method instead of declaring a second override with the same signature.
+  const onCreate = /override\s+fun\s+onCreate\s*\(\s*savedInstanceState:\s*Bundle\?\s*\)\s*\{/m.exec(source);
+  if (onCreate) {
+    const methodStart = onCreate.index + onCreate[0].length;
+    const superCall = /super\.onCreate\(savedInstanceState\)/m.exec(source.slice(methodStart));
+    if (!superCall) throw new Error('MainActivity.kt onCreate does not call super.onCreate');
+    const insertAt = methodStart + superCall.index + superCall[0].length;
+    const withPermission = `${source.slice(0, insertAt)}${permissionCode}${source.slice(insertAt)}`;
+    const closingBrace = withPermission.lastIndexOf('}');
+    if (closingBrace < insertAt) throw new Error('MainActivity.kt has an invalid class body');
+    return `${withPermission.slice(0, closingBrace)}${companion}${withPermission.slice(closingBrace)}`;
+  }
+
+  const body = `
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)${permissionCode}
+    }
+${companion}`;
 
   if (classMatch[1]) {
     const closingBrace = source.lastIndexOf('}');
