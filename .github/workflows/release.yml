@@ -586,13 +586,52 @@ jobs:
           if-no-files-found: error
 
       - name: Upload APK to release
+        uses: actions/github-script@v8
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ needs.create-release.outputs.version }}"
-          SIGNED_APK="${{ steps.sign-apk.outputs.signed_apk }}"
-          test -f "$SIGNED_APK"
-          gh release upload "$VERSION" "$SIGNED_APK" --clobber --repo "${{ github.repository }}"
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+          SIGNED_APK: ${{ steps.sign-apk.outputs.signed_apk }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const releaseId = Number(process.env.RELEASE_ID);
+            const relativeApk = process.env.SIGNED_APK;
+            const apkPath = path.resolve(process.env.GITHUB_WORKSPACE, 'open-pdf-studio', relativeApk);
+            if (!Number.isInteger(releaseId) || releaseId <= 0) {
+              throw new Error(`Invalid release id: ${process.env.RELEASE_ID}`);
+            }
+            if (!fs.existsSync(apkPath)) {
+              throw new Error(`Signed APK not found: ${apkPath}`);
+            }
+
+            const name = path.basename(apkPath);
+            const assets = await github.paginate(github.rest.repos.listReleaseAssets, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: releaseId,
+            });
+            const existing = assets.find((asset) => asset.name === name);
+            if (existing) {
+              await github.rest.repos.deleteReleaseAsset({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                asset_id: existing.id,
+              });
+            }
+
+            const data = fs.readFileSync(apkPath);
+            await github.rest.repos.uploadReleaseAsset({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: releaseId,
+              name,
+              data,
+              headers: {
+                'content-type': 'application/vnd.android.package-archive',
+                'content-length': data.length,
+              },
+            });
+            core.info(`Uploaded ${name} to release ${releaseId}`);
 
   # MCPB releases are temporarily disabled; keep this job commented for restoration.
   # mcpb:

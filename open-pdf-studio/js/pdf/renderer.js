@@ -319,7 +319,12 @@ async function _renderPageImpl(pageNum) {
 
   // Try Rust open-pdf-render first (pure Rust, fast), fall back to PDF.js
   const _t0 = performance.now();
-  const _canUseTauri = isTauri();
+  // Android documents opened through the HTML picker carry their bytes in
+  // memory and only have a display name in `doc.filePath`. They must not enter
+  // the desktop PDFium/vector viewport, which would try to read that name from
+  // the Android filesystem and leave the canvas blank. Mobile always uses the
+  // PDF.js byte renderer below.
+  const _canUseTauri = isTauri() && !isMobile();
   const _hasFilePath = !!doc.filePath;
   let _skipBitmapRender = false;
 

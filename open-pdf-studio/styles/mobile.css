@@ -30,7 +30,11 @@
   min-height: 48px;
   padding: 0 4px;
   padding-top: var(--sat);
-  background: var(--bg-secondary);
+  /* Use the same title-bar palette as desktop so light mode has a white
+     header with readable dark icons, while dark/custom themes keep their
+     intended contrast. */
+  background: var(--theme-titlebar-bg-start, var(--bg-secondary));
+  color: var(--theme-titlebar-text, var(--text-primary));
   border-bottom: 1px solid var(--border-color);
   gap: 4px;
   user-select: none;
@@ -55,9 +59,14 @@
   min-width: 44px;
   border: none;
   background: transparent;
-  color: var(--text-primary);
+  color: var(--theme-titlebar-btn-color, var(--text-primary));
   border-radius: 4px;
   cursor: default;
+}
+
+.mobile-topbar-btn svg {
+  color: inherit;
+  stroke: currentColor;
 }
 
 .mobile-topbar-btn:active {
