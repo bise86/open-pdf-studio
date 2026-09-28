@@ -10,7 +10,7 @@
 //
 // Where opts = { oldPath, newPath, oldPage, newPage, scale, offset }
 
-import * as pdfjsLib from 'pdfjs-dist';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { getCachedPdfBytes } from '../pdf/loader.js';
 import { drawHighlights } from './overlay-renderer.js';
 import { detectChanges } from './change-detector.js';

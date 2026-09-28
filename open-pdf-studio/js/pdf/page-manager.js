@@ -13,7 +13,7 @@ import {
   herschikViewports, leesPdfViewports, viewportsVanPaginas,
   beginViewportLezing, rondViewportLezingAf, viewportLezingLoopt,
 } from './pdf-viewports.js';
-import * as pdfjsLib from 'pdfjs-dist';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { resetAnnotationStorage } from './form-layer.js';
 import { clearPdfVectorCache } from '../tools/pdf-snap-extractor.js';
 import { clearTextCache } from '../search/find-controller.js';

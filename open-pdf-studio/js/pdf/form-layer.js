@@ -1,5 +1,5 @@
 import { state, getActiveDocument } from '../core/state.js';
-import { AnnotationLayer } from 'pdfjs-dist';
+import { AnnotationLayer } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { showFormFieldsBar as showBar, hideFormFieldsBar as hideBar } from '../bridge.js';
 
 // Sub-module imports

@@ -1,5 +1,5 @@
 import { createSignal, createMemo, createEffect, Show, For, onMount } from 'solid-js';
-import * as pdfjsLib from 'pdfjs-dist';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import Dialog from '../Dialog.jsx';
 import { closeDialog } from '../../stores/dialogStore.js';
 import { createBlankPDF, createDocFromTemplate } from '../../../pdf/loader.js';

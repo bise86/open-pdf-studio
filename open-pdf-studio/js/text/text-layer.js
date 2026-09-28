@@ -1,6 +1,6 @@
 import { state, getActiveDocument, getPageRotation } from '../core/state.js';
 import { isTauri, invoke } from '../core/platform.js';
-import * as pdfjsLib from 'pdfjs-dist';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { resolveTextEditPageGeometry } from './text-edit-appearance.js';
 
 /**

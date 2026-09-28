@@ -30,6 +30,7 @@ export default function MobileApp() {
   let fileInputRef;
   let mainRef;
   let barsTimer = null;
+  let darkThemeName = 'dark';
 
   const hasDocument = () => state.documents && state.documents.length > 0;
   const currentDoc = () => hasDocument() ? state.documents[state.activeDocumentIndex] : null;
@@ -44,7 +45,12 @@ export default function MobileApp() {
   onMount(() => {
     // Read initial theme
     const currentTheme = document.documentElement.getAttribute('data-theme');
-    setDarkMode(currentTheme === 'dark');
+    // The default and custom themes are dark palettes too. The previous
+    // `=== 'dark'` check treated the default theme as light, so the first tap
+    // changed the theme in the opposite direction and the icon needed a
+    // second tap to catch up.
+    if (currentTheme && currentTheme !== 'light') darkThemeName = currentTheme;
+    setDarkMode(currentTheme !== 'light');
 
     // Load recent files
     setRecentFiles(getRecentFiles());
@@ -203,7 +209,12 @@ export default function MobileApp() {
   function handleToggleDarkMode() {
     const newMode = !darkMode();
     setDarkMode(newMode);
-    applyTheme(newMode ? 'dark' : 'light');
+    if (!newMode) {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      if (currentTheme && currentTheme !== 'light') darkThemeName = currentTheme;
+    }
+    state.preferences.theme = newMode ? darkThemeName : 'light';
+    savePreferences();
   }
 
   // --- Go-to-page ---
@@ -608,7 +619,13 @@ export default function MobileApp() {
 
       {/* Mobile preferences full-screen page */}
       <Show when={prefsOpen()}>
-        <MobilePreferences onClose={() => setPrefsOpen(false)} onThemeChange={(theme) => setDarkMode(theme === 'dark')} />
+        <MobilePreferences
+          onClose={() => setPrefsOpen(false)}
+          onThemeChange={(theme) => {
+            if (theme !== 'light') darkThemeName = theme;
+            setDarkMode(theme !== 'light');
+          }}
+        />
       </Show>
 
       <LoadingOverlay />

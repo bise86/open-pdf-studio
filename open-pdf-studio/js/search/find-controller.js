@@ -528,7 +528,7 @@ async function replaceInPdfContent(doc, result, replaceText) {
     loaderMod.setCachedPdfBytes(doc.filePath, newBytesArr);
 
     // Reload pdf.js document
-    const pdfjsLib = await import('pdfjs-dist');
+    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
     doc.pdfDoc = await pdfjsLib.getDocument({
       data: newBytesArr.slice(),
       cMapUrl: '/pdfjs/web/cmaps/',

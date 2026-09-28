@@ -1,5 +1,5 @@
 import { state, getActiveDocument } from '../core/state.js';
-import { OPS } from 'pdfjs-dist';
+import { OPS } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { getPageRotation } from '../core/state.js';
 import { slaSnapExtractieOver } from './snap-extractie-beleid.js';
 

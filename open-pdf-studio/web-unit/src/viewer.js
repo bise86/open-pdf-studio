@@ -11,9 +11,9 @@
 let _pdfjs = null;
 async function pdfjs() {
   if (!_pdfjs) {
-    _pdfjs = await import('pdfjs-dist');
+    _pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
     _pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-      'pdfjs-dist/build/pdf.worker.mjs', import.meta.url,
+      'pdfjs-dist/legacy/build/pdf.worker.mjs', import.meta.url,
     ).href;
   }
   return _pdfjs;
