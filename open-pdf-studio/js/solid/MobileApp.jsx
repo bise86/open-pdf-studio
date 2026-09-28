@@ -8,16 +8,34 @@ import { createTab } from '../ui/chrome/tabs.js';
 import { initDomElements } from '../ui/dom-elements.js';
 import { applyTheme, savePreferences } from '../core/preferences.js';
 import { getSelectedText } from '../text/text-selection.js';
+import { createTextMarkupAnnotation } from '../text/text-markup.js';
+import { setTool } from '../tools/manager.js';
+import { openDialog } from './stores/dialogStore.js';
+import { undo, redo } from '../core/undo-manager.js';
+import {
+  copyPage, cutPage, pastePage, insertPagesFromFile,
+  deletePages, reorderPages, replacePages, mergeFiles,
+} from '../pdf/page-manager.js';
+import { pasteImageFromBlob } from '../annotations/clipboard.js';
+import { addBookmark } from '../ui/panels/bookmarks.js';
 import { initPinchZoom, initDoubleTap, initSwipeNavigation } from '../mobile/touch-gestures.js';
 import { getRecentFiles, addRecentFile, clearRecentFiles } from '../mobile/recent-files.js';
 import { LANGUAGES } from '../i18n/config.js';
 import { changeLanguage } from '../i18n/useTranslation.js';
 import LoadingOverlay from './components/LoadingOverlay.jsx';
+import DialogHost from './components/DialogHost.jsx';
+import PropertiesPanel from './components/properties-panel/PropertiesPanel.jsx';
+import FormFieldsBar from './components/FormFieldsBar.jsx';
+import HandtekeningBar from './components/HandtekeningBar.jsx';
+import PdfABar from './components/PdfABar.jsx';
 
 export default function MobileApp() {
   const { t } = useTranslation('common');
   const [drawerOpen, setDrawerOpen] = createSignal(false);
   const [toolsOpen, setToolsOpen] = createSignal(false);
+  const [pagesOpen, setPagesOpen] = createSignal(false);
+  const [advancedOpen, setAdvancedOpen] = createSignal(false);
+  const [propertiesOpen, setPropertiesOpen] = createSignal(false);
   const [darkMode, setDarkMode] = createSignal(false);
   const [fullscreen, setFullscreen] = createSignal(false);
   const [barsVisible, setBarsVisible] = createSignal(false);
@@ -28,6 +46,10 @@ export default function MobileApp() {
   const [copyFabVisible, setCopyFabVisible] = createSignal(false);
   const [prefsOpen, setPrefsOpen] = createSignal(false);
   let fileInputRef;
+  let insertPdfInputRef;
+  let replacePdfInputRef;
+  let mergePdfInputRef;
+  let imageInputRef;
   let mainRef;
   let barsTimer = null;
   let darkThemeName = 'dark';
@@ -138,6 +160,122 @@ export default function MobileApp() {
       console.warn('Failed to load PDF:', err);
     }
     e.target.value = '';
+  }
+
+  function chooseTool(tool) {
+    setTool(tool);
+    setToolsOpen(false);
+    setDrawerOpen(false);
+    setPagesOpen(false);
+    setAdvancedOpen(false);
+    setPropertiesOpen(false);
+  }
+
+  function applySelectionMarkup(type, color, opacity, fallbackTool) {
+    if (getSelectedText()) {
+      createTextMarkupAnnotation(type, color, opacity);
+      setToolsOpen(false);
+      return;
+    }
+    chooseTool(fallbackTool);
+  }
+
+  function currentPageNumber() {
+    return getActiveDocument()?.currentPage || 1;
+  }
+
+  function currentPageList() {
+    return Array.from({ length: totalPages() }, (_, i) => i + 1);
+  }
+
+  async function handleInsertPdfInput(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    setDrawerOpen(false);
+    setPagesOpen(false);
+    if (!file || !hasDocument()) return;
+    try {
+      await insertPagesFromFile(currentPageNumber(), 'after', null, {
+        sourceBytes: new Uint8Array(await file.arrayBuffer()),
+        sourceName: file.name,
+      });
+    } catch (err) {
+      console.warn('Failed to insert PDF pages:', err);
+      alert(`Failed to insert pages: ${err.message || err}`);
+    }
+  }
+
+  async function handleReplacePdfInput(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    setDrawerOpen(false);
+    setPagesOpen(false);
+    if (!file || !hasDocument()) return;
+    try {
+      await replacePages(currentPageNumber(), new Uint8Array(await file.arrayBuffer()), file.name);
+    } catch (err) {
+      console.warn('Failed to replace page:', err);
+      alert(`Failed to replace page: ${err.message || err}`);
+    }
+  }
+
+  async function handleMergePdfInput(e) {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    setDrawerOpen(false);
+    setPagesOpen(false);
+    if (!files.length || !hasDocument()) return;
+    try {
+      const bytes = [];
+      for (const file of files) bytes.push(new Uint8Array(await file.arrayBuffer()));
+      await mergeFiles(bytes, 'after');
+    } catch (err) {
+      console.warn('Failed to merge PDFs:', err);
+      alert(`Failed to merge PDFs: ${err.message || err}`);
+    }
+  }
+
+  async function handleImageInput(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !hasDocument()) return;
+    try {
+      await pasteImageFromBlob(file);
+    } catch (err) {
+      console.warn('Failed to insert image:', err);
+      alert(`Failed to insert image: ${err.message || err}`);
+    }
+  }
+
+  async function handleDuplicatePage() {
+    if (!hasDocument()) return;
+    const page = currentPageNumber();
+    await copyPage(page);
+    await pastePage(page);
+  }
+
+  async function handleMovePage(delta) {
+    if (!hasDocument()) return;
+    const page = currentPageNumber();
+    const target = page + delta;
+    if (target < 1 || target > totalPages()) return;
+    const order = currentPageList();
+    [order[page - 1], order[target - 1]] = [order[target - 1], order[page - 1]];
+    await reorderPages(order);
+  }
+
+  function openPageDialog(name, data = {}) {
+    setPagesOpen(false);
+    openDialog(name, data);
+  }
+
+  function openAdvancedDialog(name, data = {}) {
+    setAdvancedOpen(false);
+    openDialog(name, {
+      currentPage: currentPageNumber(),
+      totalPages: totalPages(),
+      ...data,
+    });
   }
 
   async function handleOpenRecent(recent) {
@@ -314,6 +452,10 @@ export default function MobileApp() {
         ref={fileInputRef}
         onChange={handleFileInput}
       />
+      <input type="file" accept=".pdf,application/pdf" style="display:none" ref={insertPdfInputRef} onChange={handleInsertPdfInput} />
+      <input type="file" accept=".pdf,application/pdf" style="display:none" ref={replacePdfInputRef} onChange={handleReplacePdfInput} />
+      <input type="file" accept=".pdf,application/pdf" multiple style="display:none" ref={mergePdfInputRef} onChange={handleMergePdfInput} />
+      <input type="file" accept="image/*" style="display:none" ref={imageInputRef} onChange={handleImageInput} />
 
       {/* Top bar */}
       <div class="mobile-topbar">
@@ -352,6 +494,9 @@ export default function MobileApp() {
       </div>
 
       {/* Main PDF view */}
+      <FormFieldsBar />
+      <PdfABar />
+      <HandtekeningBar />
       <div class="mobile-main" ref={mainRef} onClick={handleFullscreenTap}>
         <Show when={!hasDocument()}>
           <div class="mobile-placeholder">
@@ -471,30 +616,66 @@ export default function MobileApp() {
       <Show when={toolsOpen()}>
         <div class="mobile-tools-overlay" onClick={() => setToolsOpen(false)}>
           <div class="mobile-tools-menu" onClick={(e) => e.stopPropagation()}>
-            <button class="mobile-tools-item" onClick={() => { window.dispatchEvent(new CustomEvent('set-tool', { detail: { tool: 'highlight' } })); setToolsOpen(false); }}>
+            <button class="mobile-tools-item" onClick={() => applySelectionMarkup('textHighlight', '#FFFF00', 0.3, 'highlight')}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="10" width="18" height="6" rx="1" /></svg>
               <span>Highlight</span>
             </button>
-            <button class="mobile-tools-item" onClick={() => { window.dispatchEvent(new CustomEvent('set-tool', { detail: { tool: 'underline' } })); setToolsOpen(false); }}>
+            <button class="mobile-tools-item" onClick={() => applySelectionMarkup('textUnderline', '#0000FF', 1.0, 'editText')}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3v7a6 6 0 006 6 6 6 0 006-6V3" /><line x1="4" y1="21" x2="20" y2="21" /></svg>
               <span>Underline</span>
             </button>
-            <button class="mobile-tools-item" onClick={() => { window.dispatchEvent(new CustomEvent('set-tool', { detail: { tool: 'strikethrough' } })); setToolsOpen(false); }}>
+            <button class="mobile-tools-item" onClick={() => applySelectionMarkup('textStrikethrough', '#FF0000', 1.0, 'editText')}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="12" x2="20" y2="12" /><path d="M6 20V4" /></svg>
               <span>Strikethrough</span>
             </button>
-            <button class="mobile-tools-item" onClick={() => { window.dispatchEvent(new CustomEvent('set-tool', { detail: { tool: 'freehand' } })); setToolsOpen(false); }}>
+            <button class="mobile-tools-item" onClick={() => chooseTool('draw')}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /></svg>
               <span>Freehand</span>
             </button>
-            <button class="mobile-tools-item" onClick={() => { window.dispatchEvent(new CustomEvent('set-tool', { detail: { tool: 'text' } })); setToolsOpen(false); }}>
+            <button class="mobile-tools-item" onClick={() => chooseTool('text')}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7" /><line x1="9" y1="20" x2="15" y2="20" /><line x1="12" y1="4" x2="12" y2="20" /></svg>
               <span>Text</span>
             </button>
-            <button class="mobile-tools-item" onClick={() => { window.dispatchEvent(new CustomEvent('set-tool', { detail: { tool: 'textSelect' } })); setToolsOpen(false); }}>
+            <button class="mobile-tools-item" onClick={() => chooseTool('select')}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3h14" /><path d="M5 21h14" /><path d="M12 3v18" /><path d="M8 7l4-4 4 4" /><path d="M8 17l4 4 4-4" /></svg>
               <span>Select Text</span>
             </button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('editText')}><span>Edit existing text</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('textbox')}><span>Text box</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('comment')}><span>Comment</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('callout')}><span>Callout</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('stamp')}><span>Stamp</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('signature')}><span>Signature</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('redaction')}><span>Redact</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('box')}><span>Rectangle</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('circle')}><span>Circle</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('line')}><span>Line</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('arrow')}><span>Arrow</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('polygon')}><span>Polygon</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('polyline')}><span>Polyline</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('measureDistance')}><span>Measure distance</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('measureArea')}><span>Measure area</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('measureAngle')}><span>Measure angle</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('measurePerimeter')}><span>Measure perimeter</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('eraser')}><span>Erase ink</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('mask')}><span>Whiteout</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('ellipse')}><span>Ellipse</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('cloud')}><span>Cloud</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('arc')}><span>Arc</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('spline')}><span>Spline</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('cloudPolyline')}><span>Cloud polyline</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('scaleBar')}><span>Scale bar</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('viewport')}><span>Viewport</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('vectorSnippet')}><span>Vector snippet</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('trim')}><span>Trim</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('extend')}><span>Extend</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('array')}><span>Array</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('split')}><span>Split</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('break')}><span>Break</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('lengthen')}><span>Lengthen</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('radius')}><span>Radius</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('diameter')}><span>Diameter</span></button>
+            <button class="mobile-tools-item" onClick={() => imageInputRef?.click()}><span>Insert image</span></button>
           </div>
         </div>
       </Show>
@@ -577,6 +758,49 @@ export default function MobileApp() {
                 <span>{t('print')}</span>
               </button>
             </Show>
+            <Show when={hasDocument()}>
+              <div class="mobile-drawer-section-label">Pages</div>
+              <button class="mobile-drawer-item" onClick={() => setPagesOpen(!pagesOpen())}><span>Page operations</span></button>
+              <Show when={pagesOpen()}>
+                <div class="mobile-drawer-submenu">
+                  <button class="mobile-drawer-item" onClick={() => insertPdfInputRef?.click()}>Insert pages from PDF</button>
+                  <button class="mobile-drawer-item" onClick={() => openPageDialog('insert-page')}>Insert blank page</button>
+                  <button class="mobile-drawer-item" onClick={handleDuplicatePage}>Duplicate current page</button>
+                  <button class="mobile-drawer-item" onClick={async () => { await copyPage(currentPageNumber()); setPagesOpen(false); }}>Copy current page</button>
+                  <button class="mobile-drawer-item" onClick={async () => { await cutPage(currentPageNumber()); setPagesOpen(false); }}>Cut current page</button>
+                  <button class="mobile-drawer-item" onClick={async () => { await pastePage(currentPageNumber()); setPagesOpen(false); }}>Paste page after current</button>
+                  <button class="mobile-drawer-item" onClick={async () => { await deletePages([currentPageNumber()]); setPagesOpen(false); }}>Delete current page</button>
+                  <button class="mobile-drawer-item" onClick={() => handleMovePage(-1)}>Move page up</button>
+                  <button class="mobile-drawer-item" onClick={() => handleMovePage(1)}>Move page down</button>
+                  <button class="mobile-drawer-item" onClick={() => replacePdfInputRef?.click()}>Replace current page</button>
+                  <button class="mobile-drawer-item" onClick={() => mergePdfInputRef?.click()}>Merge PDF files</button>
+                  <button class="mobile-drawer-item" onClick={() => openPageDialog('extract-pages')}>Extract pages</button>
+                  <button class="mobile-drawer-item" onClick={async () => { await undo(); setPagesOpen(false); }}>Undo</button>
+                  <button class="mobile-drawer-item" onClick={async () => { await redo(); setPagesOpen(false); }}>Redo</button>
+                </div>
+              </Show>
+              <div class="mobile-drawer-section-label">Advanced editing</div>
+              <button class="mobile-drawer-item" onClick={() => setAdvancedOpen(!advancedOpen())}><span>More PDF commands</span></button>
+              <button class="mobile-drawer-item" onClick={() => { setDrawerOpen(false); setPropertiesOpen(true); }}>Annotation properties</button>
+              <Show when={advancedOpen()}>
+                <div class="mobile-drawer-submenu">
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('watermark')}>Add watermark</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('header-footer')}>Add date/time header or footer</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('manage-watermarks')}>Manage or remove watermarks</button>
+                  <button class="mobile-drawer-item" onClick={() => chooseTool('signature')}>Create visual signature</button>
+                  <button class="mobile-drawer-item" onClick={() => chooseTool('stamp')}>Insert stamp</button>
+                  <button class="mobile-drawer-item" onClick={() => { setAdvancedOpen(false); addBookmark(); }}>Add bookmark</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('ocr-language')}>OCR</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('crop-margins')}>Crop margins</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('resize-pages')}>Resize pages</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('compress')}>Compress PDF</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('page-setup')}>Page setup</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('shift-page')}>Shift page content</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('page-properties')}>Page properties</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('doc-properties')}>Document properties</button>
+                </div>
+              </Show>
+            </Show>
             <div class="mobile-drawer-divider"></div>
 
             {/* Recent files */}
@@ -628,6 +852,21 @@ export default function MobileApp() {
         />
       </Show>
 
+      <Show when={propertiesOpen()}>
+        <div class="mobile-properties-overlay" onClick={() => setPropertiesOpen(false)}>
+          <div class="mobile-properties-sheet" onClick={(e) => e.stopPropagation()}>
+            <div class="mobile-properties-header">
+              <span>Annotation properties</span>
+              <button class="mobile-topbar-btn" onClick={() => setPropertiesOpen(false)} aria-label="Close properties">×</button>
+            </div>
+            <PropertiesPanel />
+          </div>
+        </div>
+      </Show>
+
+      {/* The desktop host is also required on Android: text insertion, PDF
+          text editing, signatures, stamps and page dialogs all render here. */}
+      <DialogHost />
       <LoadingOverlay />
     </div>
   );

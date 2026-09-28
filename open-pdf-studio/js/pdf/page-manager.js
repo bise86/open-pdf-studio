@@ -431,23 +431,27 @@ export async function insertBlankPages(position, refPage, count, widthPt, height
  * @param {'before'|'after'} position - Insert before or after the reference page
  * @param {string|null} sourcePath - when given, no file picker is shown (the
  *   DWG/DXF import passes the PDF it just made, #400)
- * @param {{stil?: boolean}} [opties] - `stil`: show no message box when it
+ * @param {{stil?: boolean, sourceBytes?: Uint8Array, sourceName?: string}} [opties]
+ *   - Android can pass picker bytes instead of a filesystem path. `stil`: show no message box when it
  *   fails; the caller reports the failure itself (the CAD import dialog shows
  *   it in its own status line, and one report is enough, #400)
  * @returns {Promise<boolean>} true when the pages were inserted; the CAD
  *   import dialog has to know whether it succeeded (#400)
  */
-export async function insertPagesFromFile(refPage, position, sourcePath = null, { stil = false } = {}) {
+export async function insertPagesFromFile(refPage, position, sourcePath = null, { stil = false, sourceBytes = null, sourceName = '' } = {}) {
   const activeDoc = getActiveDocument();
   if (!activeDoc?.pdfDoc) return false;
-  if (!isTauri()) return false;
+  // Android's content:// URI is not a stable filesystem path.  Callers can
+  // pass the bytes from an HTML file picker; desktop keeps the native path
+  // picker for backwards compatibility.
+  if (!sourceBytes && !isTauri()) return false;
 
   const numPages = activeDoc.pdfDoc.numPages;
   if (refPage < 1 || refPage > numPages) return false;
 
   // Open file dialog to pick the source PDF
   let filePath = sourcePath;
-  if (!filePath) {
+  if (!sourceBytes && !filePath) {
     try {
       filePath = await window.__TAURI__.dialog.open({
         multiple: false,
@@ -457,7 +461,7 @@ export async function insertPagesFromFile(refPage, position, sourcePath = null, 
       return false;
     }
   }
-  if (!filePath) return false;
+  if (!sourceBytes && !filePath) return false;
 
   const cacheKey = getCacheKey();
   const currentBytes = getCachedPdfBytes(cacheKey);
@@ -471,10 +475,12 @@ export async function insertPagesFromFile(refPage, position, sourcePath = null, 
   showLoading('Inserting pages...');
   let inserted = false;
   try {
-    // Ensure the picked source file is inside the fs allowlist scope.
-    try { await window.__TAURI__?.core?.invoke?.('allow_fs_scope', { path: filePath }); } catch {}
-    const fileData = await readBinaryFile(filePath);
-    const srcBytes = new Uint8Array(fileData);
+    // Ensure a native source is inside the fs allowlist scope.  Android file
+    // input bytes do not need (and cannot use) the fs plugin.
+    if (!sourceBytes) {
+      try { await window.__TAURI__?.core?.invoke?.('allow_fs_scope', { path: filePath }); } catch {}
+    }
+    const srcBytes = sourceBytes ? new Uint8Array(sourceBytes) : new Uint8Array(await readBinaryFile(filePath));
     const srcDoc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
     const srcPageCount = srcDoc.getPageCount();
 
@@ -510,7 +516,7 @@ export async function insertPagesFromFile(refPage, position, sourcePath = null, 
     try {
       const { voegLagenSamen } = await import('./cad-import-logica.js');
       const { PDFName, PDFArray, PDFDict, PDFString, PDFHexString } = await import('pdf-lib');
-      const herkomst = String(filePath).split(/[\\/]/).pop() || '';
+      const herkomst = sourceName || String(filePath || '').split(/[\\/]/).pop() || '';
       voegLagenSamen(destDoc, copiedPages, { PDFName, PDFArray, PDFDict, PDFString, PDFHexString }, srcDoc, herkomst);
     } catch (e) {
       console.warn('[insert-pages] lagen samenvoegen mislukt:', e);
@@ -753,26 +759,29 @@ export async function restorePageState(bytes, annotations, rotations, currentPag
 /**
  * Replace a page in the current document with pages from another PDF file.
  * @param {number} pageNumber - The page number to replace (1-based)
+ * @param {Uint8Array|null} sourceBytes - Optional picker bytes for Android.
  */
-export async function replacePages(pageNumber) {
+export async function replacePages(pageNumber, sourceBytes = null, sourceName = '') {
   const activeDoc = getActiveDocument();
   if (!activeDoc?.pdfDoc) return;
-  if (!isTauri()) return;
+  if (!sourceBytes && !isTauri()) return;
 
   const numPages = activeDoc.pdfDoc.numPages;
   if (pageNumber < 1 || pageNumber > numPages) return;
 
   // Open file dialog to pick replacement PDF
-  let filePath;
-  try {
-    filePath = await window.__TAURI__.dialog.open({
-      multiple: false,
-      filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
-    });
-  } catch (e) {
-    return;
+  let filePath = null;
+  if (!sourceBytes) {
+    try {
+      filePath = await window.__TAURI__.dialog.open({
+        multiple: false,
+        filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
+      });
+    } catch (e) {
+      return;
+    }
+    if (!filePath) return;
   }
-  if (!filePath) return;
 
   const cacheKey = getCacheKey();
   const currentBytes = getCachedPdfBytes(cacheKey);
@@ -785,9 +794,8 @@ export async function replacePages(pageNumber) {
 
   showLoading('Replacing page...');
   try {
-    // Read replacement file
-    const fileData = await readBinaryFile(filePath);
-    const srcBytes = new Uint8Array(fileData);
+    // Read replacement file.  Mobile supplies bytes from its HTML picker.
+    const srcBytes = sourceBytes ? new Uint8Array(sourceBytes) : new Uint8Array(await readBinaryFile(filePath));
     const srcDoc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
     const srcPageCount = srcDoc.getPageCount();
 
@@ -852,6 +860,7 @@ export async function replacePages(pageNumber) {
  * Merge external PDF files into the current document.
  * @param {string[]} filePaths - Paths of PDF files to merge in
  * @param {'end'|'start'|'after'} position - Where to insert the merged pages
+ *   Entries may also be Uint8Array/ArrayBuffer values from the Android picker.
  * @returns {Promise<object>} what really happened (merge-verslag.js): the files
  *   that went in, the ones that were refused or failed, and the pages inserted.
  *   A skipped file is not an error here, so a caller that has to report (the
@@ -859,7 +868,8 @@ export async function replacePages(pageNumber) {
  */
 export async function mergeFiles(filePaths, position) {
   if (!filePaths || filePaths.length === 0) return nieuwMergeVerslag('no-files');
-  if (!isTauri()) return nieuwMergeVerslag('not-desktop');
+  const hasByteSources = filePaths.some(source => source instanceof Uint8Array || source instanceof ArrayBuffer);
+  if (!hasByteSources && !isTauri()) return nieuwMergeVerslag('not-desktop');
 
   // Must have a document open
   const doc = getActiveDocument();
@@ -896,10 +906,15 @@ export async function mergeFiles(filePaths, position) {
     let totalInserted = 0;
     for (const filePath of filePaths) {
       try {
-        // Ensure the picked source file is inside the fs allowlist scope.
-        try { await window.__TAURI__?.core?.invoke?.('allow_fs_scope', { path: filePath }); } catch {}
-        const fileData = await readBinaryFile(filePath);
-        const srcBytes = new Uint8Array(fileData);
+        const isBytes = filePath instanceof Uint8Array || filePath instanceof ArrayBuffer;
+        // Ensure a native source is inside the fs allowlist scope.  Byte
+        // sources are used by Android's HTML picker and need no fs access.
+        if (!isBytes) {
+          try { await window.__TAURI__?.core?.invoke?.('allow_fs_scope', { path: filePath }); } catch {}
+        }
+        const srcBytes = isBytes
+          ? new Uint8Array(filePath)
+          : new Uint8Array(await readBinaryFile(filePath));
         const srcDoc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
         const srcPageCount = srcDoc.getPageCount();
 
@@ -927,10 +942,10 @@ export async function mergeFiles(filePaths, position) {
         }
 
         totalInserted += srcPageCount;
-        verslag.merged.push(filePath);
+        verslag.merged.push(isBytes ? `mobile-${verslag.merged.length + 1}.pdf` : filePath);
       } catch (err) {
         console.error(`Failed to merge file: ${filePath}`, err);
-        const fileName = filePath.split(/[\\/]/).pop();
+        const fileName = typeof filePath === 'string' ? filePath.split(/[\\/]/).pop() : `mobile-${verslag.failed.length + 1}.pdf`;
         const detail = err?.message || String(err);
         verslag.failed.push({ path: filePath, error: detail });
         showMessage(`${i18next.t('failedToMergeFile', { file: fileName, error: detail })}\n(${detail})`);

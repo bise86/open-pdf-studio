@@ -24,6 +24,9 @@ export async function loadPreferences() {
 
     if (loaded) {
       // Migrate renamed themes
+      // `default` was the old implicit theme.  Keep existing installations on
+      // the OS-controlled theme instead of treating it as a custom palette.
+      if (loaded.theme === 'default') loaded.theme = 'system';
       if (loaded.theme === 'deep-forge') loaded.theme = 'warm-ember';
       // Standards migration: dimension ticks are open circles, not closed
       // arrows — rewrite stale saved defaults once.

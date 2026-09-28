@@ -44,7 +44,8 @@ export const HANDLE_TYPES = {
 // Default application preferences
 export const DEFAULT_PREFERENCES: Preferences = {
   // Theme
-  theme: 'default',
+  // Follow the operating system until the user explicitly chooses a theme.
+  theme: 'system',
 
   // Enkelpagina is de standaard-weergavemodus; opgeslagen 'continuous'
   // (de kortstondige oude default, nergens instelbaar in de UI) wordt bij
