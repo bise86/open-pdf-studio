@@ -68,405 +68,404 @@ jobs:
             });
             return data.id;
 
-  build:
-    needs: create-release
-    permissions:
-      contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: 'ubuntu-22.04'
-            args: ''
-            target: 'linux'
-          - platform: 'macos-26'
-            args: '--target universal-apple-darwin'
-            target: 'macos'
-          - platform: 'windows-latest'
-            args: ''
-            target: 'windows-system'
-          - platform: 'windows-latest'
-            args: ''
-            target: 'windows-user'
+  # Desktop releases are temporarily disabled; keep this job commented for restoration.
+  # build:
+  #   needs: create-release
+  #   permissions:
+  #     contents: write
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       include:
+  #         - platform: 'ubuntu-22.04'
+  #           args: ''
+  #           target: 'linux'
+  #         - platform: 'macos-26'
+  #           args: '--target universal-apple-darwin'
+  #           target: 'macos'
+  #         - platform: 'windows-latest'
+  #           args: ''
+  #           target: 'windows-system'
+  #         - platform: 'windows-latest'
+  #           args: ''
+  #           target: 'windows-user'
 
-    runs-on: ${{ matrix.platform }}
-    env:
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: 'tauri2026'
-      # Do not bundle the display stack into the AppImage. Bundled Ubuntu-era
-      # libwayland/xkbcommon/xcb shadow the host copies and abort WebKit with
-      # "Could not create default EGL display: EGL_BAD_PARAMETER" on newer Mesa
-      # (Fedora 44, issue #362). linuxdeploy reads this list; the host provides
-      # these libraries. Keep in sync with scripts/linux-appimage-smoke.sh.
-      LINUXDEPLOY_EXCLUDED_LIBRARIES: 'libwayland-client.so*;libwayland-cursor.so*;libwayland-egl.so*;libwayland-server.so*;libxkbcommon.so*;libxcb-randr.so*;libxcb-render.so*;libxcb-shm.so*;libXau.so*;libXdmcp.so*'
-    defaults:
-      run:
-        working-directory: open-pdf-studio
+  #   runs-on: ${{ matrix.platform }}
+  #   env:
+  #     TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+  #     TAURI_SIGNING_PRIVATE_KEY_PASSWORD: 'tauri2026'
+  #     # Do not bundle the display stack into the AppImage. Bundled Ubuntu-era
+  #     # libwayland/xkbcommon/xcb shadow the host copies and abort WebKit with
+  #     # "Could not create default EGL display: EGL_BAD_PARAMETER" on newer Mesa
+  #     # (Fedora 44, issue #362). linuxdeploy reads this list; the host provides
+  #     # these libraries. Keep in sync with scripts/linux-appimage-smoke.sh.
+  #     LINUXDEPLOY_EXCLUDED_LIBRARIES: 'libwayland-client.so*;libwayland-cursor.so*;libwayland-egl.so*;libwayland-server.so*;libxkbcommon.so*;libxcb-randr.so*;libxcb-render.so*;libxcb-shm.so*;libXau.so*;libXdmcp.so*'
+  #   defaults:
+  #     run:
+  #       working-directory: open-pdf-studio
 
-    steps:
-      - uses: actions/checkout@v6
+  #   steps:
+  #     - uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 20
+  #     - name: Setup Node.js
+  #       uses: actions/setup-node@v6
+  #       with:
+  #         node-version: 20
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+  #     - name: Install Rust stable
+  #       uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Rust targets (macOS universal)
-        if: matrix.target == 'macos'
-        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+  #     - name: Install Rust targets (macOS universal)
+  #       if: matrix.target == 'macos'
+  #       run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
-      - name: Install dependencies (Ubuntu only)
-        if: matrix.target == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libtesseract-dev libleptonica-dev pkg-config
+  #     - name: Install dependencies (Ubuntu only)
+  #       if: matrix.target == 'linux'
+  #       run: |
+  #         sudo apt-get update
+  #         sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libtesseract-dev libleptonica-dev pkg-config
 
-      - name: Install frontend dependencies
-        run: npm ci
+  #     - name: Install frontend dependencies
+  #       run: npm ci
 
-      # The PDFium worker pool runs as a Tauri sidecar (bundle.externalBin).
-      # Tauri requires binaries/pdfium-worker-<target-triple> to exist at
-      # build time on EVERY desktop platform, so build the workspace crate
-      # first and drop it in with the right triple suffix.
-      - name: Build pdfium-worker sidecar (Windows)
-        if: contains(matrix.target, 'windows')
-        shell: pwsh
-        working-directory: .
-        run: |
-          cargo build --release -p pdfium-worker
-          New-Item -ItemType Directory -Force open-pdf-studio/src-tauri/binaries | Out-Null
-          Copy-Item target/release/pdfium-worker.exe open-pdf-studio/src-tauri/binaries/pdfium-worker-x86_64-pc-windows-msvc.exe -Force
+  #     # The PDFium worker pool runs as a Tauri sidecar (bundle.externalBin).
+  #     # Tauri requires binaries/pdfium-worker-<target-triple> to exist at
+  #     # build time on EVERY desktop platform, so build the workspace crate
+  #     # first and drop it in with the right triple suffix.
+  #     - name: Build pdfium-worker sidecar (Windows)
+  #       if: contains(matrix.target, 'windows')
+  #       shell: pwsh
+  #       working-directory: .
+  #       run: |
+  #         cargo build --release -p pdfium-worker
+  #         New-Item -ItemType Directory -Force open-pdf-studio/src-tauri/binaries | Out-Null
+  #         Copy-Item target/release/pdfium-worker.exe open-pdf-studio/src-tauri/binaries/pdfium-worker-x86_64-pc-windows-msvc.exe -Force
 
-      # Installs signtool and the Azure Trusted Signing dlib on the runner (and
-      # signs the freshly built sidecar). The build below re-copies the sidecar,
-      # so the signatures that end up in the installer come from Tauri's
-      # signCommand, configured in the next step.
-      - name: Install Azure signing tools (Windows)
-        if: contains(matrix.target, 'windows')
-        uses: azure/trusted-signing-action@v1
-        with:
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-          endpoint: ${{ secrets.AZURE_ENDPOINT }}
-          signing-account-name: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
-          certificate-profile-name: ${{ secrets.AZURE_CERTIFICATE_PROFILE_NAME }}
-          cache-dependencies: false
-          files-folder: ${{ github.workspace }}/open-pdf-studio/src-tauri/binaries
-          files-folder-filter: exe
-          files-folder-depth: 1
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
+  #     # Installs signtool and the Azure Trusted Signing dlib on the runner (and
+  #     # signs the freshly built sidecar). The build below re-copies the sidecar,
+  #     # so the signatures that end up in the installer come from Tauri's
+  #     # signCommand, configured in the next step.
+  #     - name: Install Azure signing tools (Windows)
+  #       if: contains(matrix.target, 'windows')
+  #       uses: azure/trusted-signing-action@v1
+  #       with:
+  #         azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+  #         azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+  #         azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+  #         endpoint: ${{ secrets.AZURE_ENDPOINT }}
+  #         signing-account-name: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
+  #         certificate-profile-name: ${{ secrets.AZURE_CERTIFICATE_PROFILE_NAME }}
+  #         cache-dependencies: false
+  #         files-folder: ${{ github.workspace }}/open-pdf-studio/src-tauri/binaries
+  #         files-folder-filter: exe
+  #         files-folder-depth: 1
+  #         file-digest: SHA256
+  #         timestamp-rfc3161: http://timestamp.acs.microsoft.com
+  #         timestamp-digest: SHA256
 
-      # Tauri signs every Windows binary itself once bundle.windows.signCommand
-      # is set: sidecars, the main binary AFTER the bundler has patched the
-      # bundle type into it (signing earlier leaves a HashMismatch), NSIS
-      # resource DLLs, uninstall.exe and the installer. This CI-only config
-      # points signCommand at the signtool + dlib installed above.
-      - name: Configure Tauri sign command (Windows)
-        if: contains(matrix.target, 'windows')
-        shell: pwsh
-        env:
-          AZURE_ENDPOINT: ${{ secrets.AZURE_ENDPOINT }}
-          AZURE_ACCOUNT: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
-          AZURE_PROFILE: ${{ secrets.AZURE_CERTIFICATE_PROFILE_NAME }}
-        run: |
-          $root = Join-Path $env:LOCALAPPDATA 'TrustedSigning'
-          $signtool = Get-ChildItem $root -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -match '[\\/]x64[\\/]' } | Select-Object -First 1
-          $dlib = Get-ChildItem $root -Recurse -Filter Azure.CodeSigning.Dlib.dll -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -match '[\\/]x64[\\/]' } | Select-Object -First 1
-          if (-not $signtool -or -not $dlib) { Write-Error "signtool or Trusted Signing dlib not found under $root"; exit 1 }
-          $metadata = Join-Path $env:RUNNER_TEMP 'trusted-signing-metadata.json'
-          @{
-            Endpoint = $env:AZURE_ENDPOINT
-            CodeSigningAccountName = $env:AZURE_ACCOUNT
-            CertificateProfileName = $env:AZURE_PROFILE
-          } | ConvertTo-Json | Set-Content -Path $metadata -Encoding utf8
-          $conf = @{ bundle = @{ windows = @{ signCommand = @{
-            cmd = $signtool.FullName
-            args = @('sign', '/v', '/fd', 'SHA256', '/tr', 'http://timestamp.acs.microsoft.com', '/td', 'SHA256',
-                     '/dlib', $dlib.FullName, '/dmdf', $metadata, '%1')
-          } } } }
-          $conf | ConvertTo-Json -Depth 10 | Set-Content -Path src-tauri/tauri.signing.conf.json -Encoding utf8
-          Write-Output "signtool: $($signtool.FullName)"
-          Write-Output "dlib:     $($dlib.FullName)"
+  #     # Tauri signs every Windows binary itself once bundle.windows.signCommand
+  #     # is set: sidecars, the main binary AFTER the bundler has patched the
+  #     # bundle type into it (signing earlier leaves a HashMismatch), NSIS
+  #     # resource DLLs, uninstall.exe and the installer. This CI-only config
+  #     # points signCommand at the signtool + dlib installed above.
+  #     - name: Configure Tauri sign command (Windows)
+  #       if: contains(matrix.target, 'windows')
+  #       shell: pwsh
+  #       env:
+  #         AZURE_ENDPOINT: ${{ secrets.AZURE_ENDPOINT }}
+  #         AZURE_ACCOUNT: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
+  #         AZURE_PROFILE: ${{ secrets.AZURE_CERTIFICATE_PROFILE_NAME }}
+  #       run: |
+  #         $root = Join-Path $env:LOCALAPPDATA 'TrustedSigning'
+  #         $signtool = Get-ChildItem $root -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+  #           Where-Object { $_.FullName -match '[\\/]x64[\\/]' } | Select-Object -First 1
+  #         $dlib = Get-ChildItem $root -Recurse -Filter Azure.CodeSigning.Dlib.dll -ErrorAction SilentlyContinue |
+  #           Where-Object { $_.FullName -match '[\\/]x64[\\/]' } | Select-Object -First 1
+  #         if (-not $signtool -or -not $dlib) { Write-Error "signtool or Trusted Signing dlib not found under $root"; exit 1 }
+  #         $metadata = Join-Path $env:RUNNER_TEMP 'trusted-signing-metadata.json'
+  #         @{
+  #           Endpoint = $env:AZURE_ENDPOINT
+  #           CodeSigningAccountName = $env:AZURE_ACCOUNT
+  #           CertificateProfileName = $env:AZURE_PROFILE
+  #         } | ConvertTo-Json | Set-Content -Path $metadata -Encoding utf8
+  #         $conf = @{ bundle = @{ windows = @{ signCommand = @{
+  #           cmd = $signtool.FullName
+  #           args = @('sign', '/v', '/fd', 'SHA256', '/tr', 'http://timestamp.acs.microsoft.com', '/td', 'SHA256',
+  #                    '/dlib', $dlib.FullName, '/dmdf', $metadata, '%1')
+  #         } } } }
+  #         $conf | ConvertTo-Json -Depth 10 | Set-Content -Path src-tauri/tauri.signing.conf.json -Encoding utf8
+  #         Write-Output "signtool: $($signtool.FullName)"
+  #         Write-Output "dlib:     $($dlib.FullName)"
 
-      - name: Build pdfium-worker sidecar (Linux)
-        if: matrix.target == 'linux'
-        working-directory: .
-        run: |
-          cargo build --release -p pdfium-worker
-          mkdir -p open-pdf-studio/src-tauri/binaries
-          cp target/release/pdfium-worker open-pdf-studio/src-tauri/binaries/pdfium-worker-x86_64-unknown-linux-gnu
+  #     - name: Build pdfium-worker sidecar (Linux)
+  #       if: matrix.target == 'linux'
+  #       working-directory: .
+  #       run: |
+  #         cargo build --release -p pdfium-worker
+  #         mkdir -p open-pdf-studio/src-tauri/binaries
+  #         cp target/release/pdfium-worker open-pdf-studio/src-tauri/binaries/pdfium-worker-x86_64-unknown-linux-gnu
 
-      # Linux bundelt in-proc PDFium: tauri.linux.conf.json verwijst naar
-      # binaries/linux-x64/libpdfium.so. Zelfde stap als nightly.yml — zonder
-      # deze fetch faalt tauri-build op 'resource path doesn't exist'.
-      - name: Fetch libpdfium.so (Linux)
-        if: matrix.target == 'linux'
-        run: |
-          mkdir -p src-tauri/binaries/linux-x64
-          curl -L "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F7834/pdfium-linux-x64.tgz" -o /tmp/pdfium-linux.tgz
-          tar xzf /tmp/pdfium-linux.tgz -C /tmp lib/libpdfium.so
-          cp /tmp/lib/libpdfium.so src-tauri/binaries/linux-x64/libpdfium.so
+  #     # Linux bundelt in-proc PDFium: tauri.linux.conf.json verwijst naar
+  #     # binaries/linux-x64/libpdfium.so. Zelfde stap als nightly.yml — zonder
+  #     # deze fetch faalt tauri-build op 'resource path doesn't exist'.
+  #     - name: Fetch libpdfium.so (Linux)
+  #       if: matrix.target == 'linux'
+  #       run: |
+  #         mkdir -p src-tauri/binaries/linux-x64
+  #         curl -L "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F7834/pdfium-linux-x64.tgz" -o /tmp/pdfium-linux.tgz
+  #         tar xzf /tmp/pdfium-linux.tgz -C /tmp lib/libpdfium.so
+  #         cp /tmp/lib/libpdfium.so src-tauri/binaries/linux-x64/libpdfium.so
 
-      - name: Build pdfium-worker sidecar (macOS universal)
-        if: matrix.target == 'macos'
-        working-directory: .
-        run: |
-          cargo build --release -p pdfium-worker --target aarch64-apple-darwin
-          cargo build --release -p pdfium-worker --target x86_64-apple-darwin
-          mkdir -p open-pdf-studio/src-tauri/binaries
-          # tauri-build validates the sidecar PER ARCH during the per-target
-          # cargo builds of a universal bundle, so all three names must exist.
-          cp target/aarch64-apple-darwin/release/pdfium-worker open-pdf-studio/src-tauri/binaries/pdfium-worker-aarch64-apple-darwin
-          cp target/x86_64-apple-darwin/release/pdfium-worker open-pdf-studio/src-tauri/binaries/pdfium-worker-x86_64-apple-darwin
-          lipo -create -output open-pdf-studio/src-tauri/binaries/pdfium-worker-universal-apple-darwin \
-            target/aarch64-apple-darwin/release/pdfium-worker \
-            target/x86_64-apple-darwin/release/pdfium-worker
+  #     - name: Build pdfium-worker sidecar (macOS universal)
+  #       if: matrix.target == 'macos'
+  #       working-directory: .
+  #       run: |
+  #         cargo build --release -p pdfium-worker --target aarch64-apple-darwin
+  #         cargo build --release -p pdfium-worker --target x86_64-apple-darwin
+  #         mkdir -p open-pdf-studio/src-tauri/binaries
+  #         # tauri-build validates the sidecar PER ARCH during the per-target
+  #         # cargo builds of a universal bundle, so all three names must exist.
+  #         cp target/aarch64-apple-darwin/release/pdfium-worker open-pdf-studio/src-tauri/binaries/pdfium-worker-aarch64-apple-darwin
+  #         cp target/x86_64-apple-darwin/release/pdfium-worker open-pdf-studio/src-tauri/binaries/pdfium-worker-x86_64-apple-darwin
+  #         lipo -create -output open-pdf-studio/src-tauri/binaries/pdfium-worker-universal-apple-darwin \
+  #           target/aarch64-apple-darwin/release/pdfium-worker \
+  #           target/x86_64-apple-darwin/release/pdfium-worker
 
-      # macOS bundelt in-proc PDFium: tauri.macos.conf.json verwijst naar
-      # binaries/macos-universal/libpdfium.dylib. Universal (arm64+x86_64)
-      # via bblanchon/pdfium-binaries (zelfde chromium-release als de Linux-
-      # .so en de win-x64 pdfium.dll), met SHA-256-verificatie zodat een
-      # gewijzigde upstream-asset de build laat falen i.p.v. stil door te gaan.
-      - name: Prepare libpdfium.dylib (macOS)
-        if: matrix.target == 'macos'
-        run: npm run prepare:native-runtime
+  #     # macOS bundelt in-proc PDFium: tauri.macos.conf.json verwijst naar
+  #     # binaries/macos-universal/libpdfium.dylib. Universal (arm64+x86_64)
+  #     # via bblanchon/pdfium-binaries (zelfde chromium-release als de Linux-
+  #     # .so en de win-x64 pdfium.dll), met SHA-256-verificatie zodat een
+  #     # gewijzigde upstream-asset de build laat falen i.p.v. stil door te gaan.
+  #     - name: Prepare libpdfium.dylib (macOS)
+  #       if: matrix.target == 'macos'
+  #       run: npm run prepare:native-runtime
 
-      # Onderteken de dylib VÓÓR het bundelen. Tauri ondertekent de app-binary
-      # en sidecars, maar niet een losse dylib onder bundle.resources — de
-      # notarisatie keurt de hele bundel daarop af ("The binary is not
-      # signed", status Invalid). De handtekening zit in het Mach-O-bestand
-      # zelf en reist mee wanneer de bundler hem naar Contents/Resources
-      # kopieert. Eigen tijdelijke keychain; tauri-action maakt daarna zijn
-      # eigen import — geen conflict.
-      - name: Sign libpdfium.dylib (macOS)
-        if: matrix.target == 'macos'
-        shell: bash
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-        run: |
-          set -euo pipefail
-          KEYCHAIN="$RUNNER_TEMP/dylib-sign.keychain-db"
-          KEYCHAIN_PW="$(uuidgen)"
-          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/dylib-cert.p12"
-          security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN"
-          security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
-          security import "$RUNNER_TEMP/dylib-cert.p12" -P "$APPLE_CERTIFICATE_PASSWORD" \
-            -A -t cert -f pkcs12 -k "$KEYCHAIN"
-          security set-key-partition-list -S "apple-tool:,apple:,codesign:" \
-            -k "$KEYCHAIN_PW" "$KEYCHAIN" > /dev/null
-          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
-          codesign --force --options runtime --timestamp \
-            --sign "$APPLE_SIGNING_IDENTITY" \
-            src-tauri/binaries/macos-universal/libpdfium.dylib
-          codesign -dv --verbose=2 src-tauri/binaries/macos-universal/libpdfium.dylib
-          rm -f "$RUNNER_TEMP/dylib-cert.p12"
+  #     # Onderteken de dylib VÓÓR het bundelen. Tauri ondertekent de app-binary
+  #     # en sidecars, maar niet een losse dylib onder bundle.resources — de
+  #     # notarisatie keurt de hele bundel daarop af ("The binary is not
+  #     # signed", status Invalid). De handtekening zit in het Mach-O-bestand
+  #     # zelf en reist mee wanneer de bundler hem naar Contents/Resources
+  #     # kopieert. Eigen tijdelijke keychain; tauri-action maakt daarna zijn
+  #     # eigen import — geen conflict.
+  #     - name: Sign libpdfium.dylib (macOS)
+  #       if: matrix.target == 'macos'
+  #       shell: bash
+  #       env:
+  #         APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+  #         APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+  #         APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+  #       run: |
+  #         set -euo pipefail
+  #         KEYCHAIN="$RUNNER_TEMP/dylib-sign.keychain-db"
+  #         KEYCHAIN_PW="$(uuidgen)"
+  #         printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/dylib-cert.p12"
+  #         security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+  #         security set-keychain-settings -lut 21600 "$KEYCHAIN"
+  #         security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+  #         security import "$RUNNER_TEMP/dylib-cert.p12" -P "$APPLE_CERTIFICATE_PASSWORD" \
+  #           -A -t cert -f pkcs12 -k "$KEYCHAIN"
+  #         security set-key-partition-list -S "apple-tool:,apple:,codesign:" \
+  #           -k "$KEYCHAIN_PW" "$KEYCHAIN" > /dev/null
+  #         security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+  #         codesign --force --options runtime --timestamp \
+  #           --sign "$APPLE_SIGNING_IDENTITY" \
+  #           src-tauri/binaries/macos-universal/libpdfium.dylib
+  #         codesign -dv --verbose=2 src-tauri/binaries/macos-universal/libpdfium.dylib
+  #         rm -f "$RUNNER_TEMP/dylib-cert.p12"
 
-      - name: Set user install mode
-        if: matrix.target == 'windows-user'
-        shell: pwsh
-        run: |
-          $conf = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
-          $conf.bundle.windows.nsis.installMode = "currentUser"
-          $conf | ConvertTo-Json -Depth 10 | Set-Content src-tauri/tauri.conf.json
+  #     - name: Set user install mode
+  #       if: matrix.target == 'windows-user'
+  #       shell: pwsh
+  #       run: |
+  #         $conf = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+  #         $conf.bundle.windows.nsis.installMode = "currentUser"
+  #         $conf | ConvertTo-Json -Depth 10 | Set-Content src-tauri/tauri.conf.json
 
-      # WebView2Loader.dll is committed in src-tauri/ and bundled via
-      # bundle.resources — just verify it's there. (The old pre-build step
-      # searched src-tauri/target, which no longer exists since the crate
-      # moved into the workspace: the target dir lives at the repo root.)
-      - name: Verify WebView2Loader.dll resource (Windows)
-        if: contains(matrix.target, 'windows')
-        shell: pwsh
-        run: |
-          if (Test-Path 'src-tauri/WebView2Loader.dll') {
-            Write-Output "OK: src-tauri/WebView2Loader.dll present (bundled as resource)"
-          } else {
-            Write-Error "src-tauri/WebView2Loader.dll missing - NSIS bundle would lack the loader"
-            exit 1
-          }
+  #     # WebView2Loader.dll is committed in src-tauri/ and bundled via
+  #     # bundle.resources — just verify it's there. (The old pre-build step
+  #     # searched src-tauri/target, which no longer exists since the crate
+  #     # moved into the workspace: the target dir lives at the repo root.)
+  #     - name: Verify WebView2Loader.dll resource (Windows)
+  #       if: contains(matrix.target, 'windows')
+  #       shell: pwsh
+  #       run: |
+  #         if (Test-Path 'src-tauri/WebView2Loader.dll') {
+  #           Write-Output "OK: src-tauri/WebView2Loader.dll present (bundled as resource)"
+  #         } else {
+  #           Write-Error "src-tauri/WebView2Loader.dll missing - NSIS bundle would lack the loader"
+  #           exit 1
+  #         }
 
-      - name: Write App Store Connect API key (macOS)
-        if: matrix.target == 'macos'
-        shell: bash
-        run: |
-          printf '%s' "${{ secrets.APPLE_API_KEY_CONTENT }}" > "${{ runner.temp }}/apple-api-key.p8"
+  #     - name: Write App Store Connect API key (macOS)
+  #       if: matrix.target == 'macos'
+  #       shell: bash
+  #       run: |
+  #         printf '%s' "${{ secrets.APPLE_API_KEY_CONTENT }}" > "${{ runner.temp }}/apple-api-key.p8"
 
-      # Tauri 2.10 downloads its own, older linuxdeploy build, which ignores
-      # LINUXDEPLOY_EXCLUDED_LIBRARIES, so the display stack ended up in the
-      # AppImage anyway (issue #362). Tauri only downloads when the file is not
-      # already in its tool cache (~/.cache/tauri), so place a pinned,
-      # checksum-verified linuxdeploy release there first.
-      - name: Provide pinned linuxdeploy (Linux)
-        if: matrix.target == 'linux'
-        shell: bash
-        run: |
-          set -euo pipefail
-          tools="${XDG_CACHE_HOME:-$HOME/.cache}/tauri"
-          mkdir -p "$tools"
-          curl -fsSL --retry 3 -o "$tools/linuxdeploy-x86_64.AppImage" \
-            https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage
-          echo "c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d  $tools/linuxdeploy-x86_64.AppImage" | sha256sum -c -
-          chmod +x "$tools/linuxdeploy-x86_64.AppImage"
+  #     # Tauri 2.10 downloads its own, older linuxdeploy build, which ignores
+  #     # LINUXDEPLOY_EXCLUDED_LIBRARIES, so the display stack ended up in the
+  #     # AppImage anyway (issue #362). Tauri only downloads when the file is not
+  #     # already in its tool cache (~/.cache/tauri), so place a pinned,
+  #     # checksum-verified linuxdeploy release there first.
+  #     - name: Provide pinned linuxdeploy (Linux)
+  #       if: matrix.target == 'linux'
+  #       shell: bash
+  #       run: |
+  #         set -euo pipefail
+  #         tools="${XDG_CACHE_HOME:-$HOME/.cache}/tauri"
+  #         mkdir -p "$tools"
+  #         curl -fsSL --retry 3 -o "$tools/linuxdeploy-x86_64.AppImage" \
+  #           https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage
+  #         echo "c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d  $tools/linuxdeploy-x86_64.AppImage" | sha256sum -c -
+  #         chmod +x "$tools/linuxdeploy-x86_64.AppImage"
 
-      - name: Build Tauri app (with release upload)
-        if: matrix.target == 'linux' || matrix.target == 'windows-system'
-        uses: tauri-apps/tauri-action@action-v0.6.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        with:
-          projectPath: open-pdf-studio
-          args: ${{ matrix.target == 'windows-system' && '--config src-tauri/tauri.signing.conf.json' || matrix.args }}
-          releaseId: ${{ needs.create-release.outputs.release_id }}
-          includeUpdaterJson: true
+  #     - name: Build Tauri app (with release upload)
+  #       if: matrix.target == 'linux' || matrix.target == 'windows-system'
+  #       uses: tauri-apps/tauri-action@action-v0.6.1
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #         AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  #         AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+  #         AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  #       with:
+  #         projectPath: open-pdf-studio
+  #         args: ${{ matrix.target == 'windows-system' && '--config src-tauri/tauri.signing.conf.json' || matrix.args }}
+  #         releaseId: ${{ needs.create-release.outputs.release_id }}
+  #         includeUpdaterJson: true
 
-      # Compile once. Bundling is a separate phase so a temporary failure in
-      # the external notarization service can be retried without rebuilding
-      # both macOS architectures.
-      - name: Build macOS app without bundles
-        if: matrix.target == 'macos'
-        run: npm run tauri -- build --target universal-apple-darwin --no-bundle
+  #     # Compile once. Bundling is a separate phase so a temporary failure in
+  #     # the external notarization service can be retried without rebuilding
+  #     # both macOS architectures.
+  #     - name: Build macOS app without bundles
+  #       if: matrix.target == 'macos'
+  #       run: npm run tauri -- build --target universal-apple-darwin --no-bundle
 
-      - name: Upload macOS release assets
-        if: matrix.target == 'macos'
-        uses: tauri-apps/tauri-action@action-v0.6.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # Notarisatie via App Store Connect API-key: Apple-ID + app-specifiek
-          # wachtwoord gaf een permanente HTTP 500 op de notary-API (bekend
-          # probleem met die auth-methode); de API-key-route is de door Apple
-          # aanbevolen en betrouwbare CI-methode.
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_PATH: ${{ runner.temp }}/apple-api-key.p8
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        with:
-          projectPath: open-pdf-studio
-          tauriScript: node scripts/macos-notarization-retry.mjs
-          args: --target universal-apple-darwin
-          releaseId: ${{ needs.create-release.outputs.release_id }}
-          includeUpdaterJson: true
+  #     - name: Upload macOS release assets
+  #       if: matrix.target == 'macos'
+  #       uses: tauri-apps/tauri-action@action-v0.6.1
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #         APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+  #         APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+  #         APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+  #         # Notarisatie via App Store Connect API-key: Apple-ID + app-specifiek
+  #         # wachtwoord gaf een permanente HTTP 500 op de notary-API (bekend
+  #         # probleem met die auth-methode); de API-key-route is de door Apple
+  #         # aanbevolen en betrouwbare CI-methode.
+  #         APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+  #         APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+  #         APPLE_API_KEY_PATH: ${{ runner.temp }}/apple-api-key.p8
+  #         APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+  #       with:
+  #         projectPath: open-pdf-studio
+  #         tauriScript: node scripts/macos-notarization-retry.mjs
+  #         args: --target universal-apple-darwin
+  #         releaseId: ${{ needs.create-release.outputs.release_id }}
+  #         includeUpdaterJson: true
 
-      - name: Verify macOS signature and notarization
-        if: matrix.target == 'macos'
-        run: |
-          set -euo pipefail
-          DMG_PATH="$(find ../target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' -print -quit)"
-          test -n "$DMG_PATH"
-          # Tauri ruimt de .app op nadat de dmg gebouwd is ("Cleaning ..." in
-          # het bundel-log) — de losse bundle/macos-map bestaat hier dus niet
-          # meer. Verifieer daarom wat gebruikers echt krijgen: mount de dmg,
-          # kopieer de app eruit en controleer die. De dmg zelf is ondertekend
-          # maar niet apart genotariseerd (het ticket zit aan de app), dus op
-          # de dmg draaien we geen stapler-validatie.
-          MOUNT_DIR="$(mktemp -d)"
-          hdiutil attach -nobrowse -readonly -mountpoint "$MOUNT_DIR" "$DMG_PATH"
-          APP_SRC="$(find "$MOUNT_DIR" -maxdepth 1 -name '*.app' -print -quit)"
-          test -n "$APP_SRC"
-          APP_PATH="$RUNNER_TEMP/verify-app/Open PDF Studio.app"
-          mkdir -p "$RUNNER_TEMP/verify-app"
-          cp -R "$APP_SRC" "$APP_PATH"
-          hdiutil detach "$MOUNT_DIR"
-          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
-          spctl --assess --type execute --verbose=4 "$APP_PATH"
-          xcrun stapler validate "$APP_PATH"
-          bash scripts/macos-startup-smoke.sh "$APP_PATH"
+  #     - name: Verify macOS signature and notarization
+  #       if: matrix.target == 'macos'
+  #       run: |
+  #         set -euo pipefail
+  #         DMG_PATH="$(find ../target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' -print -quit)"
+  #         test -n "$DMG_PATH"
+  #         # Tauri ruimt de .app op nadat de dmg gebouwd is ("Cleaning ..." in
+  #         # het bundel-log) — de losse bundle/macos-map bestaat hier dus niet
+  #         # meer. Verifieer daarom wat gebruikers echt krijgen: mount de dmg,
+  #         # kopieer de app eruit en controleer die. De dmg zelf is ondertekend
+  #         # maar niet apart genotariseerd (het ticket zit aan de app), dus op
+  #         # de dmg draaien we geen stapler-validatie.
+  #         MOUNT_DIR="$(mktemp -d)"
+  #         hdiutil attach -nobrowse -readonly -mountpoint "$MOUNT_DIR" "$DMG_PATH"
+  #         APP_SRC="$(find "$MOUNT_DIR" -maxdepth 1 -name '*.app' -print -quit)"
+  #         test -n "$APP_SRC"
+  #         APP_PATH="$RUNNER_TEMP/verify-app/Open PDF Studio.app"
+  #         mkdir -p "$RUNNER_TEMP/verify-app"
+  #         cp -R "$APP_SRC" "$APP_PATH"
+  #         hdiutil detach "$MOUNT_DIR"
+  #         codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+  #         spctl --assess --type execute --verbose=4 "$APP_PATH"
+  #         xcrun stapler validate "$APP_PATH"
+  #         bash scripts/macos-startup-smoke.sh "$APP_PATH"
 
-      - name: Build Tauri app (user installer)
-        if: matrix.target == 'windows-user'
-        uses: tauri-apps/tauri-action@action-v0.6.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        with:
-          projectPath: open-pdf-studio
-          args: --config src-tauri/tauri.signing.conf.json
+  #     - name: Build Tauri app (user installer)
+  #       if: matrix.target == 'windows-user'
+  #       uses: tauri-apps/tauri-action@action-v0.6.1
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #         AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  #         AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+  #         AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  #       with:
+  #         projectPath: open-pdf-studio
+  #         args: --config src-tauri/tauri.signing.conf.json
 
-      # Proof on what users actually get: install the signed installer silently
-      # on the runner and check the signatures of the installed binaries,
-      # including uninstall.exe. A silent install skips the hook pages, so no
-      # printer, file association or shortcut is set up.
-      - name: Verify installed binaries are signed (Windows)
-        if: contains(matrix.target, 'windows')
-        shell: pwsh
-        run: |
-          $nsis = "$env:GITHUB_WORKSPACE/target/release/bundle/nsis"
-          $setup = Get-ChildItem "$nsis/*-setup.exe" | Select-Object -First 1
-          $installerSig = Get-AuthenticodeSignature $setup.FullName
-          Write-Output ("installer {0}: {1}" -f $setup.Name, $installerSig.Status)
-          if ($installerSig.Status -ne 'Valid') { Write-Error 'Installer is not signed'; exit 1 }
+  #     # Proof on what users actually get: install the signed installer silently
+  #     # on the runner and check the signatures of the installed binaries,
+  #     # including uninstall.exe. A silent install skips the hook pages, so no
+  #     # printer, file association or shortcut is set up.
+  #     - name: Verify installed binaries are signed (Windows)
+  #       if: contains(matrix.target, 'windows')
+  #       shell: pwsh
+  #       run: |
+  #         $nsis = "$env:GITHUB_WORKSPACE/target/release/bundle/nsis"
+  #         $setup = Get-ChildItem "$nsis/*-setup.exe" | Select-Object -First 1
+  #         $installerSig = Get-AuthenticodeSignature $setup.FullName
+  #         Write-Output ("installer {0}: {1}" -f $setup.Name, $installerSig.Status)
+  #         if ($installerSig.Status -ne 'Valid') { Write-Error 'Installer is not signed'; exit 1 }
 
-          $proc = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
-          if (-not $proc.WaitForExit(600000)) { $proc.Kill(); Write-Error 'Silent install timed out'; exit 1 }
-          Write-Output "installer exit code: $($proc.ExitCode)"
+  #         $proc = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
+  #         if (-not $proc.WaitForExit(600000)) { $proc.Kill(); Write-Error 'Silent install timed out'; exit 1 }
+  #         Write-Output "installer exit code: $($proc.ExitCode)"
 
-          $keys = @(
-            'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Open PDF Studio (User)',
-            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Open PDF Studio',
-            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Open PDF Studio'
-          )
-          $dir = $null
-          foreach ($k in $keys) {
-            $loc = (Get-ItemProperty $k -ErrorAction SilentlyContinue).InstallLocation
-            if ($loc) { $dir = $loc.Trim('"'); break }
-          }
-          if (-not $dir) {
-            foreach ($d in @("$env:ProgramFiles\Open PDF Studio", "$env:LOCALAPPDATA\Open PDF Studio")) {
-              if (Test-Path (Join-Path $d 'open-pdf-studio.exe')) { $dir = $d; break }
-            }
-          }
-          if (-not $dir) { Write-Error 'Install location not found'; exit 1 }
-          Write-Output "installed to: $dir"
+  #         $keys = @(
+  #           'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Open PDF Studio (User)',
+  #           'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Open PDF Studio',
+  #           'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Open PDF Studio'
+  #         )
+  #         $dir = $null
+  #         foreach ($k in $keys) {
+  #           $loc = (Get-ItemProperty $k -ErrorAction SilentlyContinue).InstallLocation
+  #           if ($loc) { $dir = $loc.Trim('"'); break }
+  #         }
+  #         if (-not $dir) {
+  #           foreach ($d in @("$env:ProgramFiles\Open PDF Studio", "$env:LOCALAPPDATA\Open PDF Studio")) {
+  #             if (Test-Path (Join-Path $d 'open-pdf-studio.exe')) { $dir = $d; break }
+  #           }
+  #         }
+  #         if (-not $dir) { Write-Error 'Install location not found'; exit 1 }
+  #         Write-Output "installed to: $dir"
 
-          $unsigned = $false
-          foreach ($exe in 'open-pdf-studio.exe', 'pdfium-worker.exe', 'uninstall.exe') {
-            $sig = Get-AuthenticodeSignature (Join-Path $dir $exe)
-            Write-Output ("{0}: {1} ({2})" -f $exe, $sig.Status, $sig.SignerCertificate.Subject)
-            if ($sig.Status -ne 'Valid') { $unsigned = $true }
-          }
-          $uninstaller = Join-Path $dir 'uninstall.exe'
-          if (Test-Path $uninstaller) { Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait }
-          if ($unsigned) { Write-Error 'Installed binaries are not signed'; exit 1 }
+  #         $unsigned = $false
+  #         foreach ($exe in 'open-pdf-studio.exe', 'pdfium-worker.exe', 'uninstall.exe') {
+  #           $sig = Get-AuthenticodeSignature (Join-Path $dir $exe)
+  #           Write-Output ("{0}: {1} ({2})" -f $exe, $sig.Status, $sig.SignerCertificate.Subject)
+  #           if ($sig.Status -ne 'Valid') { $unsigned = $true }
+  #         }
+  #         $uninstaller = Join-Path $dir 'uninstall.exe'
+  #         if (Test-Path $uninstaller) { Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait }
+  #         if ($unsigned) { Write-Error 'Installed binaries are not signed'; exit 1 }
 
-      - name: Upload user installer to release
-        if: matrix.target == 'windows-user'
-        shell: pwsh
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $VERSION = "${{ needs.create-release.outputs.version }}"
-          # Workspace target dir lives at the repo root (src-tauri is a member)
-          $NSIS_DIR = "$env:GITHUB_WORKSPACE/target/release/bundle/nsis"
-          $EXE = Get-ChildItem "$NSIS_DIR/*-setup.exe" | Select-Object -First 1
-          # Rename: "Open PDF Studio_x.y.z_x64-setup.exe" -> "Open PDF Studio_x.y.z_x64_user-setup.exe"
-          $NEW_NAME = $EXE.Name -replace '_x64-setup\.exe$', '_x64_user-setup.exe'
-          $NEW_PATH = Join-Path $EXE.DirectoryName $NEW_NAME
-          Rename-Item $EXE.FullName $NEW_PATH
-          gh release upload $VERSION "$NEW_PATH" --clobber --repo "${{ github.repository }}"
-          Write-Host "Uploaded user installer: $NEW_NAME"
+  #     - name: Upload user installer to release
+  #       if: matrix.target == 'windows-user'
+  #       shell: pwsh
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #       run: |
+  #         $VERSION = "${{ needs.create-release.outputs.version }}"
+  #         # Workspace target dir lives at the repo root (src-tauri is a member)
+  #         $NSIS_DIR = "$env:GITHUB_WORKSPACE/target/release/bundle/nsis"
+  #         $EXE = Get-ChildItem "$NSIS_DIR/*-setup.exe" | Select-Object -First 1
+  #         # Rename: "Open PDF Studio_x.y.z_x64-setup.exe" -> "Open PDF Studio_x.y.z_x64_user-setup.exe"
+  #         $NEW_NAME = $EXE.Name -replace '_x64-setup\.exe$', '_x64_user-setup.exe'
+  #         $NEW_PATH = Join-Path $EXE.DirectoryName $NEW_NAME
+  #         Rename-Item $EXE.FullName $NEW_PATH
+  #         gh release upload $VERSION "$NEW_PATH" --clobber --repo "${{ github.repository }}"
+  #         Write-Host "Uploaded user installer: $NEW_NAME"
 
   build-android:
     needs: create-release
-    # Non-blocking: a failed Android build must NOT hold back the desktop
-    # release (Windows/Linux/macOS). It uploads its APK independently.
-    continue-on-error: true
+    # Android ARM64 is currently the only release target; failures block finalization.
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -528,7 +527,7 @@ jobs:
         env:
           NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.0.12077973
 
-      - name: Build Android APK
+      - name: Build Android ARM64 APK (Android 10+)
         run: npx tauri android build --apk --target aarch64
         env:
           NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.0.12077973
@@ -581,50 +580,51 @@ jobs:
         with:
           name: android-apk
           path: open-pdf-studio/src-tauri/gen/android/**/open-pdf-studio-release.apk
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Upload APK to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ needs.create-release.outputs.version }}"
-          SIGNED_APK=$(find src-tauri/gen/android -name "open-pdf-studio-release.apk" -type f | head -1)
-          if [ -n "$SIGNED_APK" ]; then
-            gh release upload "$VERSION" "$SIGNED_APK" --clobber --repo "${{ github.repository }}"
-          fi
+          SIGNED_APK="${{ steps.sign-apk.outputs.signed_apk }}"
+          test -f "$SIGNED_APK"
+          gh release upload "$VERSION" "$SIGNED_APK" --clobber --repo "${{ github.repository }}"
 
-  mcpb:
-    # Claude Desktop-extensie (.mcpb): de stdio-brug plus manifest, ingepakt
-    # met de officiele CLI. Hangt niet aan de desktop-builds vast.
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    needs: create-release
+  # MCPB releases are temporarily disabled; keep this job commented for restoration.
+  # mcpb:
+  #   # Claude Desktop-extensie (.mcpb): de stdio-brug plus manifest, ingepakt
+  #   # met de officiele CLI. Hangt niet aan de desktop-builds vast.
+  #   permissions:
+  #     contents: write
+  #   runs-on: ubuntu-latest
+  #   needs: create-release
 
-    steps:
-      - uses: actions/checkout@v6
+  #   steps:
+  #     - uses: actions/checkout@v6
 
-      - name: Set up Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 20
+  #     - name: Set up Node
+  #       uses: actions/setup-node@v6
+  #       with:
+  #         node-version: 20
 
-      - name: Extensie bouwen
-        run: node mcpb/scripts/pack.mjs
+  #     - name: Extensie bouwen
+  #       run: node mcpb/scripts/pack.mjs
 
-      - name: Aan de release hangen
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ needs.create-release.outputs.version }}"
-          gh release upload "$VERSION" mcpb/dist/open-pdf-studio.mcpb --clobber --repo "${{ github.repository }}"
+  #     - name: Aan de release hangen
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #       run: |
+  #         VERSION="${{ needs.create-release.outputs.version }}"
+  #         gh release upload "$VERSION" mcpb/dist/open-pdf-studio.mcpb --clobber --repo "${{ github.repository }}"
 
   publish-release:
     permissions:
       contents: write
     runs-on: ubuntu-latest
-    # Android intentionally omitted — it must not gate the desktop release.
-    needs: [create-release, build]
+    # Restore the desktop dependency when desktop releases are re-enabled.
+    # needs: [create-release, build]
+    needs: [create-release, build-android]
 
     steps:
       - name: Finalize release
