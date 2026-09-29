@@ -17,6 +17,7 @@ const {
   NietInBrowserError,
   NIET_IN_BROWSER,
   isTauri,
+  saveFileDialog,
 } = await import('./platform.js');
 
 function zetTauri(core) {
@@ -68,4 +69,23 @@ test('bureaublad: een fout van de Rust-kant komt ongewijzigd door', async () => 
 test('Tauri aanwezig maar zonder core-brug telt als niet beschikbaar', async () => {
   globalThis.window.__TAURI__ = {};
   await assert.rejects(() => invoke('mcp_status'), (fout) => isNietInBrowser(fout));
+});
+
+test('Android save-dialog result normaliseert content-URI naar een padstring', async () => {
+  globalThis.window.__TAURI__ = {
+    dialog: { save: async () => ({ file: 'content://downloads/document/123' }) },
+  };
+  assert.equal(await saveFileDialog('document.pdf'), 'content://downloads/document/123');
+});
+
+test('save-dialog valt terug op het geregistreerde Tauri-commando', async () => {
+  const aanroepen = [];
+  zetTauri({ invoke: async (cmd, args) => {
+    aanroepen.push([cmd, args]);
+    return { file: 'content://downloads/document/456' };
+  } });
+  assert.equal(await saveFileDialog('document.pdf'), 'content://downloads/document/456');
+  assert.deepEqual(aanroepen, [['plugin:dialog|save', {
+    options: { defaultPath: 'document.pdf', filters: [{ name: 'PDF Files', extensions: ['pdf'] }] },
+  }]]);
 });

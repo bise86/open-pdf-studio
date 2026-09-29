@@ -228,20 +228,28 @@ export async function saveFileDialog(defaultPath, filters) {
       filters = [{ name: 'PDF Files', extensions: ['pdf'] }];
     }
 
-    // Try using the dialog plugin
-    if (window.__TAURI__.dialog) {
+    const options = { defaultPath: defaultPath, filters: filters };
+    const normalizeSaveResult = (result) => (
+      typeof result === 'string' ? result : (result?.file || result?.path || null)
+    );
+
+    // Prefer the global plugin API. Android's native plugin returns
+    // { file: "content://..." }, while desktop returns a path string.
+    if (typeof window.__TAURI__.dialog?.save === 'function') {
       try {
-        const result = await window.__TAURI__.dialog.save({
-          defaultPath: defaultPath,
-          filters: filters
-        });
-        // Android's dialog plugin resolves to { file: "content://..." },
-        // while desktop resolves directly to a path string. Normalize both
-        // shapes so Save As passes an actual target path to the saver.
-        return typeof result === 'string' ? result : (result?.file || result?.path || null);
+        return normalizeSaveResult(await window.__TAURI__.dialog.save(options));
       } catch (e) {
         console.error('Dialog plugin error:', e);
       }
+    }
+
+    // withGlobalTauri can expose the core bridge before a plugin's global
+    // helper is attached. Call the registered command directly in that case;
+    // otherwise Save As silently returned null and looked like a dead button.
+    try {
+      return normalizeSaveResult(await invoke('plugin:dialog|save', { options }));
+    } catch (e) {
+      console.error('Dialog save command unavailable:', e);
     }
 
     return null;

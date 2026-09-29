@@ -28,6 +28,7 @@ import PropertiesPanel from './components/properties-panel/PropertiesPanel.jsx';
 import FormFieldsBar from './components/FormFieldsBar.jsx';
 import HandtekeningBar from './components/HandtekeningBar.jsx';
 import PdfABar from './components/PdfABar.jsx';
+import { savePDF, savePDFAs } from '../pdf/saver.js';
 
 export default function MobileApp() {
   const { t } = useTranslation('common');
@@ -49,6 +50,7 @@ export default function MobileApp() {
   const [copyFabVisible, setCopyFabVisible] = createSignal(false);
   const [prefsOpen, setPrefsOpen] = createSignal(false);
   const [historyBusy, setHistoryBusy] = createSignal(false);
+  const [saveBusy, setSaveBusy] = createSignal(false);
   let fileInputRef;
   let insertPdfInputRef;
   let replacePdfInputRef;
@@ -161,6 +163,9 @@ export default function MobileApp() {
       // pointer/touch behavior is configured before the first edit gesture.
       setTool(state.currentTool);
       await loadPDF(file.name, index, data);
+      // Android's HTML picker gives us bytes plus a display name, not a
+      // writable filesystem path. Save must therefore ask for a destination.
+      if (state.documents[index]) state.documents[index]._mobileFileInput = true;
       await fitPage();
       addRecentFile(file.name, file.name);
       setRecentFiles(getRecentFiles());
@@ -358,14 +363,29 @@ export default function MobileApp() {
     setZoom(newScale);
   }
 
-  function handleSave() {
+  async function runSave(action) {
+    if (saveBusy() || !currentDoc()?.pdfDoc) return;
     setDrawerOpen(false);
-    window.dispatchEvent(new CustomEvent('save-document'));
+    setSaveBusy(true);
+    try {
+      const saved = await action();
+      if (saved === false) {
+        showMessage(t('saveNotCompleted', '保存未完成'));
+      }
+    } catch (error) {
+      console.error('Save failed:', error);
+      showMessage(`${t('failedToSavePdf', '保存失败')}: ${error?.message || String(error)}`);
+    } finally {
+      setSaveBusy(false);
+    }
+  }
+
+  function handleSave() {
+    return runSave(savePDF);
   }
 
   function handleSaveAs() {
-    setDrawerOpen(false);
-    window.dispatchEvent(new CustomEvent('save-document-as'));
+    return runSave(savePDFAs);
   }
 
   function handlePrint() {

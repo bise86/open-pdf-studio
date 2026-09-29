@@ -250,7 +250,7 @@ export async function savePDF(saveAsPath = null, opties = {}) {
   // `filePath` (so they render via the real pipeline), so we ALSO check the
   // `isUntitled` flag — otherwise "Save" would silently overwrite the temp
   // file and the user would never be asked where to keep their document.
-  if ((!currentPath || activeDoc?.isUntitled) && !saveAsPath) {
+  if ((!currentPath || activeDoc?.isUntitled || activeDoc?._mobileFileInput) && !saveAsPath) {
     return await savePDFAs();
   }
 
@@ -3211,6 +3211,7 @@ export async function savePDFAs() {
         doc.filePath = savePath;
         doc.fileName = savePath ? savePath.split(/[\\/]/).pop() : 'Untitled';
         doc.isUntitled = false; // now a real, user-chosen file
+        doc._mobileFileInput = false;
         doc.saveTargetPath = null; // lives at its real path now; no separate save target
         doc._renderTemp = false;
       }
