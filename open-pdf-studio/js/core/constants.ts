@@ -119,8 +119,10 @@ export const DEFAULT_PREFERENCES: Preferences = {
   // (CAD-)ondergrond leesbaar is zonder eerst een vulling aan te zetten.
   textboxFillColor: '#FFFFFF',
   textboxFillNone: false,
-  textboxStrokeColor: '#FF0000',
-  textboxBorderWidth: 1,
+  // A newly inserted text box has no visible border. Users can enable and
+  // style the border from the properties panel when they need one.
+  textboxStrokeColor: 'none',
+  textboxBorderWidth: 0,
   textboxBorderStyle: 'solid',
   textboxOpacity: 100,
   textboxFontSize: 8,

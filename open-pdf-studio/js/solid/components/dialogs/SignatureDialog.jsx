@@ -176,29 +176,65 @@ export default function SignatureDialog(props) {
     }
   }
 
-  function startDraw(e) {
-    if (!ctx || !canvasRef) return;
-    isDrawing = true;
+  function ensureCanvasContext() {
+    if (!canvasRef) return null;
+    // The draw tab is conditionally mounted. If the user visits Saved and
+    // returns to Draw, Solid creates a new canvas element and the old 2D
+    // context must not be reused.
+    if (!ctx || ctx.canvas !== canvasRef) {
+      ctx = canvasRef.getContext('2d');
+      if (ctx) {
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = strokeColor();
+        redrawCanvas();
+      }
+    }
+    return ctx;
+  }
+
+  function canvasPoint(e) {
+    if (!canvasRef) return null;
     const rect = canvasRef.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    currentStroke = { color: strokeColor(), points: [{ x, y }] };
+    // The canvas is responsive on Android. Convert CSS pixels back to the
+    // fixed backing-store coordinates used by the signature image.
+    return {
+      x: (e.clientX - rect.left) * (CANVAS_WIDTH / rect.width),
+      y: (e.clientY - rect.top) * (CANVAS_HEIGHT / rect.height),
+    };
+  }
+
+  function startDraw(e) {
+    if (!ensureCanvasContext()) return;
+    e.preventDefault();
+    if (e.pointerId !== undefined && canvasRef.setPointerCapture) {
+      try { canvasRef.setPointerCapture(e.pointerId); } catch (_) { /* pointer already ended */ }
+    }
+    const point = canvasPoint(e);
+    if (!point) return;
+    isDrawing = true;
+    currentStroke = { color: strokeColor(), points: [point] };
     canvasSnapshot = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
 
   function continueDraw(e) {
     if (!isDrawing || !currentStroke || !ctx || !canvasRef) return;
-    const rect = canvasRef.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    currentStroke.points.push({ x, y });
+    e.preventDefault();
+    const point = canvasPoint(e);
+    if (!point) return;
+    currentStroke.points.push(point);
     ctx.putImageData(canvasSnapshot, 0, 0);
     drawStroke(currentStroke);
   }
 
-  function endDraw() {
+  function endDraw(e) {
+    e?.preventDefault?.();
     if (isDrawing && currentStroke && currentStroke.points.length > 1) {
       strokes.push(currentStroke);
+    }
+    if (e?.pointerId !== undefined && canvasRef?.releasePointerCapture) {
+      try { canvasRef.releasePointerCapture(e.pointerId); } catch (_) { /* already released */ }
     }
     currentStroke = null;
     canvasSnapshot = null;
@@ -208,12 +244,14 @@ export default function SignatureDialog(props) {
   function undoLastStroke() {
     if (strokes.length === 0) return;
     strokes.pop();
+    ensureCanvasContext();
     redrawCanvas();
   }
 
   function clearCanvas() {
     strokes = [];
     currentStroke = null;
+    ensureCanvasContext();
     if (ctx && canvasRef) {
       ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     }
@@ -260,13 +298,7 @@ export default function SignatureDialog(props) {
   }
 
   onMount(() => {
-    if (canvasRef) {
-      ctx = canvasRef.getContext('2d');
-      ctx.lineWidth = 2;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.strokeStyle = strokeColor();
-    }
+    ensureCanvasContext();
     document.addEventListener('keydown', onKeyDown, true);
   });
 
@@ -337,10 +369,10 @@ export default function SignatureDialog(props) {
             ref={canvasRef}
             width={CANVAS_WIDTH}
             height={CANVAS_HEIGHT}
-            onMouseDown={startDraw}
-            onMouseMove={continueDraw}
-            onMouseUp={endDraw}
-            onMouseLeave={endDraw}
+            onPointerDown={startDraw}
+            onPointerMove={continueDraw}
+            onPointerUp={endDraw}
+            onPointerCancel={endDraw}
           />
         </div>
       </Show>

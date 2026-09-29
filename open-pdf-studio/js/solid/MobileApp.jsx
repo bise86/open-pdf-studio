@@ -705,6 +705,9 @@ export default function MobileApp() {
             <button class="mobile-tools-item" onClick={() => chooseTool('diameter')}><span>{tRibbon('drawing.diameter', 'Diameter')}</span></button>
             <button class="mobile-tools-item" onClick={() => imageInputRef?.click()}><span>{tRibbon('drawing.insertImage', 'Insert image')}</span></button>
             <Show when={(currentDoc()?.selectedAnnotations || []).length > 0}>
+              <button class="mobile-tools-item" onClick={() => { setToolsOpen(false); setPropertiesOpen(true); }}>
+                <span>{tRibbon('comment.properties')}</span>
+              </button>
               <button class="mobile-tools-item mobile-tools-danger" onClick={handleDeleteSelected}>
                 <span>{t('delete')} {tRibbon('comment.properties', 'selected')}</span>
               </button>

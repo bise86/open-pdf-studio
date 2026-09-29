@@ -45,6 +45,16 @@ export async function loadPreferences() {
       // Tekstvak: oude standaard-tekstgrootte 14 → 8 (alleen de onaangeroerde
       // oude default; een zelfgekozen grootte blijft staan).
       if (loaded.textboxFontSize === 14) loaded.textboxFontSize = 8;
+      // Text boxes used to inherit a bright red 1pt default border. That
+      // border looked like a permanent selection frame on mobile. Migrate the
+      // untouched old default to the new borderless default; an explicitly
+      // configured border remains unchanged.
+      if (String(loaded.textboxStrokeColor || '').toUpperCase() === '#FF0000'
+          && (loaded.textboxBorderWidth === 1 || loaded.textboxBorderWidth === undefined)
+          && (loaded.textboxBorderStyle === 'solid' || loaded.textboxBorderStyle === undefined)) {
+        loaded.textboxStrokeColor = 'none';
+        loaded.textboxBorderWidth = 0;
+      }
       // Enkelpagina is de standaard-weergavemodus. 'continuous' was korte
       // tijd de default voor nieuwe installaties; omdat deze voorkeur nergens
       // in de UI instelbaar is, is een opgeslagen 'continuous' altijd die
