@@ -772,22 +772,23 @@ export function drawAnnotation(ctx, annotation) {
       }
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(annotation.x, annotation.y, annotation.width, annotation.height);
-      // Only ONE edge carries the dash-dot hint line; the other three sides are
-      // borderless, so the mask reads as a clean cover with a single marked side.
-      // Which side is configurable via `maskDashSide` (top/right/bottom/left).
-      ctx.strokeStyle = annotation.strokeColor || '#9a9a9a';
-      ctx.lineWidth = thinLw(annotation.lineWidth || 0.75);
-      applyBorderStyle(ctx, annotation.borderStyle || 'dash-dot');
-      const _mx0 = annotation.x, _my0 = annotation.y;
-      const _mx1 = annotation.x + annotation.width, _my1 = annotation.y + annotation.height;
-      ctx.beginPath();
-      switch (annotation.maskDashSide || 'left') {
-        case 'top':    ctx.moveTo(_mx0, _my0); ctx.lineTo(_mx1, _my0); break;
-        case 'right':  ctx.moveTo(_mx1, _my0); ctx.lineTo(_mx1, _my1); break;
-        case 'bottom': ctx.moveTo(_mx0, _my1); ctx.lineTo(_mx1, _my1); break;
-        default:       ctx.moveTo(_mx0, _my0); ctx.lineTo(_mx0, _my1); break; // left
+      // Normal whiteout masks carry one dash-dot hint edge. Eraser masks are
+      // brush-generated cover patches and must remain visually borderless.
+      if (!annotation.eraserMask) {
+        ctx.strokeStyle = annotation.strokeColor || '#9a9a9a';
+        ctx.lineWidth = thinLw(annotation.lineWidth || 0.75);
+        applyBorderStyle(ctx, annotation.borderStyle || 'dash-dot');
+        const _mx0 = annotation.x, _my0 = annotation.y;
+        const _mx1 = annotation.x + annotation.width, _my1 = annotation.y + annotation.height;
+        ctx.beginPath();
+        switch (annotation.maskDashSide || 'left') {
+          case 'top':    ctx.moveTo(_mx0, _my0); ctx.lineTo(_mx1, _my0); break;
+          case 'right':  ctx.moveTo(_mx1, _my0); ctx.lineTo(_mx1, _my1); break;
+          case 'bottom': ctx.moveTo(_mx0, _my1); ctx.lineTo(_mx1, _my1); break;
+          default:       ctx.moveTo(_mx0, _my0); ctx.lineTo(_mx0, _my1); break; // left
+        }
+        ctx.stroke();
       }
-      ctx.stroke();
       ctx.setLineDash([]);
       ctx.restore();
       break;

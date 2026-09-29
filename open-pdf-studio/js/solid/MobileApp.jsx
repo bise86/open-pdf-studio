@@ -1,6 +1,6 @@
 import { createSignal, onMount, onCleanup, Show, For } from 'solid-js';
 import { useTranslation } from '../i18n/useTranslation.js';
-import { state, getActiveDocument } from '../core/state.js';
+import { state, getActiveDocument, clearSelection } from '../core/state.js';
 import { isTauri, isMobile, extractFileName } from '../core/platform.js';
 import { loadPDF, loadPDFIfNeeded } from '../pdf/loader.js';
 import { fitWidth, fitPage, goToPage, rotatePage, setZoom } from '../pdf/renderer.js';
@@ -11,7 +11,7 @@ import { getSelectedText } from '../text/text-selection.js';
 import { createTextMarkupAnnotation } from '../text/text-markup.js';
 import { setTool } from '../tools/manager.js';
 import { openDialog } from './stores/dialogStore.js';
-import { undo, redo } from '../core/undo-manager.js';
+import { undo, redo, recordBulkDelete } from '../core/undo-manager.js';
 import {
   copyPage, cutPage, pastePage, insertPagesFromFile,
   deletePages, reorderPages, replacePages, mergeFiles,
@@ -31,6 +31,9 @@ import PdfABar from './components/PdfABar.jsx';
 
 export default function MobileApp() {
   const { t } = useTranslation('common');
+  const { t: tRibbon } = useTranslation('ribbon');
+  const { t: tProperties } = useTranslation('properties');
+  const { t: tDialogs } = useTranslation('dialogs');
   const [drawerOpen, setDrawerOpen] = createSignal(false);
   const [toolsOpen, setToolsOpen] = createSignal(false);
   const [pagesOpen, setPagesOpen] = createSignal(false);
@@ -151,6 +154,9 @@ export default function MobileApp() {
       const { index } = createTab(file.name);
       await new Promise(r => setTimeout(r, 0));
       initDomElements();
+      // Re-apply the active tool after the mobile canvas is mounted so its
+      // pointer/touch behavior is configured before the first edit gesture.
+      setTool(state.currentTool);
       await loadPDF(file.name, index, data);
       await fitPage();
       addRecentFile(file.name, file.name);
@@ -169,6 +175,28 @@ export default function MobileApp() {
     setPagesOpen(false);
     setAdvancedOpen(false);
     setPropertiesOpen(false);
+  }
+
+  // Android has no physical Delete key. Keep the same undoable delete path as
+  // the desktop keyboard handler so selected text boxes, images and other
+  // annotations can be removed directly from the mobile editing menu.
+  async function handleDeleteSelected() {
+    const doc = currentDoc();
+    const selected = [...(doc?.selectedAnnotations || [])].filter(annotation => !annotation.locked);
+    if (!doc || selected.length === 0) return;
+    const message = `${t('delete')}?`;
+    if (!window.confirm(message)) return;
+    recordBulkDelete(selected);
+    const deleted = new Set(selected);
+    doc.annotations = doc.annotations.filter(annotation => !deleted.has(annotation));
+    clearSelection();
+    setToolsOpen(false);
+    setDrawerOpen(false);
+    setPropertiesOpen(false);
+    import('../annotations/rendering.js').then(({ redrawAnnotations, redrawContinuous }) => {
+      if (doc.viewMode === 'continuous') redrawContinuous();
+      else redrawAnnotations();
+    });
   }
 
   function applySelectionMarkup(type, color, opacity, fallbackTool) {
@@ -618,64 +646,69 @@ export default function MobileApp() {
           <div class="mobile-tools-menu" onClick={(e) => e.stopPropagation()}>
             <button class="mobile-tools-item" onClick={() => applySelectionMarkup('textHighlight', '#FFFF00', 0.3, 'highlight')}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="10" width="18" height="6" rx="1" /></svg>
-              <span>Highlight</span>
+              <span>{tRibbon('comment.highlight')}</span>
             </button>
             <button class="mobile-tools-item" onClick={() => applySelectionMarkup('textUnderline', '#0000FF', 1.0, 'editText')}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3v7a6 6 0 006 6 6 6 0 006-6V3" /><line x1="4" y1="21" x2="20" y2="21" /></svg>
-              <span>Underline</span>
+              <span>{tProperties('textFormat.underline', 'Underline')}</span>
             </button>
             <button class="mobile-tools-item" onClick={() => applySelectionMarkup('textStrikethrough', '#FF0000', 1.0, 'editText')}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="12" x2="20" y2="12" /><path d="M6 20V4" /></svg>
-              <span>Strikethrough</span>
+              <span>{tProperties('textFormat.strikethrough', 'Strikethrough')}</span>
             </button>
             <button class="mobile-tools-item" onClick={() => chooseTool('draw')}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /></svg>
-              <span>Freehand</span>
+              <span>{tRibbon('comment.freehand')}</span>
             </button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('text')}>
+            <button class="mobile-tools-item" onClick={() => chooseTool('textbox')}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7" /><line x1="9" y1="20" x2="15" y2="20" /><line x1="12" y1="4" x2="12" y2="20" /></svg>
-              <span>Text</span>
+              <span>{tRibbon('comment.textBox', 'Text')}</span>
             </button>
             <button class="mobile-tools-item" onClick={() => chooseTool('select')}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3h14" /><path d="M5 21h14" /><path d="M12 3v18" /><path d="M8 7l4-4 4 4" /><path d="M8 17l4 4 4-4" /></svg>
-              <span>Select Text</span>
+              <span>{tRibbon('home.selectText')}</span>
             </button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('editText')}><span>Edit existing text</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('textbox')}><span>Text box</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('comment')}><span>Comment</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('callout')}><span>Callout</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('stamp')}><span>Stamp</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('signature')}><span>Signature</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('redaction')}><span>Redact</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('box')}><span>Rectangle</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('circle')}><span>Circle</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('line')}><span>Line</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('arrow')}><span>Arrow</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('polygon')}><span>Polygon</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('polyline')}><span>Polyline</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('measureDistance')}><span>Measure distance</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('measureArea')}><span>Measure area</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('measureAngle')}><span>Measure angle</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('measurePerimeter')}><span>Measure perimeter</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('eraser')}><span>Erase ink</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('mask')}><span>Whiteout</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('ellipse')}><span>Ellipse</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('cloud')}><span>Cloud</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('arc')}><span>Arc</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('spline')}><span>Spline</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('cloudPolyline')}><span>Cloud polyline</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('scaleBar')}><span>Scale bar</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('viewport')}><span>Viewport</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('vectorSnippet')}><span>Vector snippet</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('trim')}><span>Trim</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('extend')}><span>Extend</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('array')}><span>Array</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('split')}><span>Split</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('break')}><span>Break</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('lengthen')}><span>Lengthen</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('radius')}><span>Radius</span></button>
-            <button class="mobile-tools-item" onClick={() => chooseTool('diameter')}><span>Diameter</span></button>
-            <button class="mobile-tools-item" onClick={() => imageInputRef?.click()}><span>Insert image</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('editText')}><span>{tRibbon('home.editText')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('comment')}><span>{tRibbon('comment.note')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('callout')}><span>{tRibbon('comment.callout')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('stamp')}><span>{tRibbon('comment.stamp')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('signature')}><span>{tRibbon('comment.signature')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('redaction')}><span>{tRibbon('comment.redact')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('box')}><span>{tRibbon('comment.rectangle')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('circle')}><span>{tRibbon('comment.ellipse')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('line')}><span>{tRibbon('comment.line')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('arrow')}><span>{tRibbon('comment.arrow')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('polygon')}><span>{tRibbon('comment.polygon')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('polyline')}><span>{tRibbon('comment.polyline')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('measureDistance')}><span>{tRibbon('measure.measureDistance')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('measureArea')}><span>{tRibbon('measure.measureArea')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('measureAngle')}><span>{tRibbon('measure.measureAngle')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('measurePerimeter')}><span>{tRibbon('measure.measurePerimeter')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('eraser')}><span>{tRibbon('drawing.eraser', 'Eraser')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('removeImage')}><span>{tRibbon('drawing.removeImage', 'Remove embedded image')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('mask')}><span>{tRibbon('drawing.whiteout', 'Whiteout')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('ellipse')}><span>{tRibbon('comment.ellipse')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('cloud')}><span>{tRibbon('comment.cloud')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('arc')}><span>{tRibbon('drawing.arc', 'Arc')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('spline')}><span>{tRibbon('comment.spline')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('cloudPolyline')}><span>{tRibbon('comment.cloudPolyline')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('scaleBar')}><span>{tRibbon('measure.scaleBar')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('viewport')}><span>{tRibbon('measure.viewport')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('vectorSnippet')}><span>{tRibbon('drawing.vectorSnippet')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('trim')}><span>{tRibbon('drawing.trim', 'Trim')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('extend')}><span>{tRibbon('drawing.extend', 'Extend')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('array')}><span>{tRibbon('drawing.array', 'Array')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('split')}><span>{tRibbon('drawing.split', 'Split')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('break')}><span>{tRibbon('drawing.break', 'Break')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('lengthen')}><span>{tRibbon('drawing.lengthen', 'Lengthen')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('radius')}><span>{tRibbon('drawing.radius', 'Radius')}</span></button>
+            <button class="mobile-tools-item" onClick={() => chooseTool('diameter')}><span>{tRibbon('drawing.diameter', 'Diameter')}</span></button>
+            <button class="mobile-tools-item" onClick={() => imageInputRef?.click()}><span>{tRibbon('drawing.insertImage', 'Insert image')}</span></button>
+            <Show when={(currentDoc()?.selectedAnnotations || []).length > 0}>
+              <button class="mobile-tools-item mobile-tools-danger" onClick={handleDeleteSelected}>
+                <span>{t('delete')} {tRibbon('comment.properties', 'selected')}</span>
+              </button>
+            </Show>
           </div>
         </div>
       </Show>
@@ -684,7 +717,7 @@ export default function MobileApp() {
       <Show when={gotoOpen()}>
         <div class="mobile-goto-overlay" onClick={() => setGotoOpen(false)}>
           <div class="mobile-goto-dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>Go to Page</h3>
+            <h3>{tRibbon('home.navigate')} / {tRibbon('home.page', 'Page')}</h3>
             <input
               type="number"
               min="1"
@@ -695,8 +728,8 @@ export default function MobileApp() {
               autofocus
             />
             <div class="mobile-goto-buttons">
-              <button onClick={() => setGotoOpen(false)}>Cancel</button>
-              <button class="primary" onClick={handleGotoSubmit}>Go</button>
+              <button onClick={() => setGotoOpen(false)}>{t('cancel')}</button>
+              <button class="primary" onClick={handleGotoSubmit}>{t('ok')}</button>
             </div>
           </div>
         </div>
@@ -759,45 +792,45 @@ export default function MobileApp() {
               </button>
             </Show>
             <Show when={hasDocument()}>
-              <div class="mobile-drawer-section-label">Pages</div>
-              <button class="mobile-drawer-item" onClick={() => setPagesOpen(!pagesOpen())}><span>Page operations</span></button>
+              <div class="mobile-drawer-section-label">{tRibbon('organize.pages')}</div>
+              <button class="mobile-drawer-item" onClick={() => setPagesOpen(!pagesOpen())}><span>{tRibbon('organize.pages')}</span></button>
               <Show when={pagesOpen()}>
                 <div class="mobile-drawer-submenu">
-                  <button class="mobile-drawer-item" onClick={() => insertPdfInputRef?.click()}>Insert pages from PDF</button>
-                  <button class="mobile-drawer-item" onClick={() => openPageDialog('insert-page')}>Insert blank page</button>
-                  <button class="mobile-drawer-item" onClick={handleDuplicatePage}>Duplicate current page</button>
-                  <button class="mobile-drawer-item" onClick={async () => { await copyPage(currentPageNumber()); setPagesOpen(false); }}>Copy current page</button>
-                  <button class="mobile-drawer-item" onClick={async () => { await cutPage(currentPageNumber()); setPagesOpen(false); }}>Cut current page</button>
-                  <button class="mobile-drawer-item" onClick={async () => { await pastePage(currentPageNumber()); setPagesOpen(false); }}>Paste page after current</button>
-                  <button class="mobile-drawer-item" onClick={async () => { await deletePages([currentPageNumber()]); setPagesOpen(false); }}>Delete current page</button>
-                  <button class="mobile-drawer-item" onClick={() => handleMovePage(-1)}>Move page up</button>
-                  <button class="mobile-drawer-item" onClick={() => handleMovePage(1)}>Move page down</button>
-                  <button class="mobile-drawer-item" onClick={() => replacePdfInputRef?.click()}>Replace current page</button>
-                  <button class="mobile-drawer-item" onClick={() => mergePdfInputRef?.click()}>Merge PDF files</button>
-                  <button class="mobile-drawer-item" onClick={() => openPageDialog('extract-pages')}>Extract pages</button>
-                  <button class="mobile-drawer-item" onClick={async () => { await undo(); setPagesOpen(false); }}>Undo</button>
-                  <button class="mobile-drawer-item" onClick={async () => { await redo(); setPagesOpen(false); }}>Redo</button>
+                  <button class="mobile-drawer-item" onClick={() => insertPdfInputRef?.click()}>{tRibbon('organize.insertPage')} PDF</button>
+                  <button class="mobile-drawer-item" onClick={() => openPageDialog('insert-page')}>{tRibbon('organize.insertPage')}</button>
+                  <button class="mobile-drawer-item" onClick={handleDuplicatePage}>{t('duplicate')} {t('page')}</button>
+                  <button class="mobile-drawer-item" onClick={async () => { await copyPage(currentPageNumber()); setPagesOpen(false); }}>{t('copy')} {t('page')}</button>
+                  <button class="mobile-drawer-item" onClick={async () => { await cutPage(currentPageNumber()); setPagesOpen(false); }}>{t('cut')} {t('page')}</button>
+                  <button class="mobile-drawer-item" onClick={async () => { await pastePage(currentPageNumber()); setPagesOpen(false); }}>{t('paste')} {t('page')}</button>
+                  <button class="mobile-drawer-item" onClick={async () => { await deletePages([currentPageNumber()]); setPagesOpen(false); }}>{tRibbon('organize.deletePage')}</button>
+                  <button class="mobile-drawer-item" onClick={() => handleMovePage(-1)}>{tDialogs('insertPage.moveUp', 'Move up')}</button>
+                  <button class="mobile-drawer-item" onClick={() => handleMovePage(1)}>{tDialogs('insertPage.moveDown', 'Move down')}</button>
+                  <button class="mobile-drawer-item" onClick={() => replacePdfInputRef?.click()}>{t('edit')} {t('page')}</button>
+                  <button class="mobile-drawer-item" onClick={() => mergePdfInputRef?.click()}>{tRibbon('organize.mergePdfs')}</button>
+                  <button class="mobile-drawer-item" onClick={() => openPageDialog('extract-pages')}>{tRibbon('organize.extractPages')}</button>
+                  <button class="mobile-drawer-item" onClick={async () => { await undo(); setPagesOpen(false); }}>{t('undo')}</button>
+                  <button class="mobile-drawer-item" onClick={async () => { await redo(); setPagesOpen(false); }}>{t('redo')}</button>
                 </div>
               </Show>
-              <div class="mobile-drawer-section-label">Advanced editing</div>
-              <button class="mobile-drawer-item" onClick={() => setAdvancedOpen(!advancedOpen())}><span>More PDF commands</span></button>
-              <button class="mobile-drawer-item" onClick={() => { setDrawerOpen(false); setPropertiesOpen(true); }}>Annotation properties</button>
+              <div class="mobile-drawer-section-label">{t('edit')}</div>
+              <button class="mobile-drawer-item" onClick={() => setAdvancedOpen(!advancedOpen())}><span>{tRibbon('tabs.organize')}</span></button>
+              <button class="mobile-drawer-item" onClick={() => { setDrawerOpen(false); setPropertiesOpen(true); }}>{tRibbon('comment.properties')}</button>
               <Show when={advancedOpen()}>
                 <div class="mobile-drawer-submenu">
-                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('watermark')}>Add watermark</button>
-                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('header-footer')}>Add date/time header or footer</button>
-                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('manage-watermarks')}>Manage or remove watermarks</button>
-                  <button class="mobile-drawer-item" onClick={() => chooseTool('signature')}>Create visual signature</button>
-                  <button class="mobile-drawer-item" onClick={() => chooseTool('stamp')}>Insert stamp</button>
-                  <button class="mobile-drawer-item" onClick={() => { setAdvancedOpen(false); addBookmark(); }}>Add bookmark</button>
-                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('ocr-language')}>OCR</button>
-                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('crop-margins')}>Crop margins</button>
-                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('resize-pages')}>Resize pages</button>
-                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('compress')}>Compress PDF</button>
-                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('page-setup')}>Page setup</button>
-                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('shift-page')}>Shift page content</button>
-                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('page-properties')}>Page properties</button>
-                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('doc-properties')}>Document properties</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('watermark')}>{tRibbon('organize.addWatermark')}</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('header-footer')}>{tRibbon('organize.addHeaderFooter')}</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('manage-watermarks')}>{tDialogs('manageWatermarks.title', tRibbon('organize.manageWatermarks'))}</button>
+                  <button class="mobile-drawer-item" onClick={() => chooseTool('signature')}>{tRibbon('comment.signature')}</button>
+                  <button class="mobile-drawer-item" onClick={() => chooseTool('stamp')}>{tRibbon('comment.stamp')}</button>
+                  <button class="mobile-drawer-item" onClick={() => { setAdvancedOpen(false); addBookmark(); }}>{tProperties('addBookmark', 'Add bookmark')}</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('ocr-language')}>{tRibbon('organize.ocr')}</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('crop-margins')}>{tDialogs('cropMargins.title', tRibbon('home.cropMargins'))}</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('resize-pages')}>{tDialogs('resizePages.title', tRibbon('home.resizePages'))}</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('compress')}>{tDialogs('compress.title', 'Compress PDF')}</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('page-setup')}>{tDialogs('pageSetup.title', 'Page Setup')}</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('shift-page')}>{tRibbon('organize.shiftPage')}</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('page-properties')}>{tDialogs('pageProperties.title', 'Page Properties')}</button>
+                  <button class="mobile-drawer-item" onClick={() => openAdvancedDialog('doc-properties')}>{tDialogs('docProperties.title', 'Document Properties')}</button>
                 </div>
               </Show>
             </Show>
@@ -827,7 +860,7 @@ export default function MobileApp() {
                 <circle cx="12" cy="12" r="3" />
                 <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
               </svg>
-              <span>Preferences</span>
+              <span>{t('preferences')}</span>
             </button>
             <button class="mobile-drawer-item" onClick={() => { setDrawerOpen(false); window.dispatchEvent(new CustomEvent('show-about')); }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -835,7 +868,7 @@ export default function MobileApp() {
                 <line x1="12" y1="16" x2="12" y2="12" />
                 <line x1="12" y1="8" x2="12.01" y2="8" />
               </svg>
-              <span>About</span>
+              <span>{tRibbon('help.about')}</span>
             </button>
           </div>
         </div>
@@ -856,8 +889,8 @@ export default function MobileApp() {
         <div class="mobile-properties-overlay" onClick={() => setPropertiesOpen(false)}>
           <div class="mobile-properties-sheet" onClick={(e) => e.stopPropagation()}>
             <div class="mobile-properties-header">
-              <span>Annotation properties</span>
-              <button class="mobile-topbar-btn" onClick={() => setPropertiesOpen(false)} aria-label="Close properties">×</button>
+              <span>{tRibbon('comment.properties')}</span>
+              <button class="mobile-topbar-btn" onClick={() => setPropertiesOpen(false)} aria-label={t('close')}>×</button>
             </div>
             <PropertiesPanel />
           </div>

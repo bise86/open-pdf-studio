@@ -286,6 +286,11 @@
   background: var(--hover-bg);
 }
 
+.mobile-tools-danger {
+  color: var(--error-color, #d13438);
+  border-top: 1px solid var(--border-color);
+}
+
 .mobile-drawer-submenu {
   margin: 0 0 8px 12px;
   border-left: 2px solid var(--border-color);

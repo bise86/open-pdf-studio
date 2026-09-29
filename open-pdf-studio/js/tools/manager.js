@@ -15,6 +15,7 @@ import {
 } from './select-doorval.js';
 import { isGMoveModeActive } from './g-move-mode.js';
 import { isGRotateModeActive } from './g-rotate-mode.js';
+import { isMobile } from '../core/platform.js';
 
 // Tools that are always allowed (view-only, non-modifying)
 const READONLY_ALLOWED_TOOLS = new Set(['select', 'hand']);
@@ -249,9 +250,19 @@ function _setSelectFallthroughEnabled(enabled) {
 // form/link pointer events (they sit above the text layer and would intercept events).
 // Centralised here to avoid race conditions with async tool deactivation.
 function setAnnotationCanvasForTextAccess(enabled) {
+  // On Android a drag must remain a pointer gesture. The mobile viewer keeps
+  // panning enabled for navigation, but that causes the browser to cancel a
+  // pointer stream while moving a textbox/image or drawing with the eraser.
+  // Disable native touch handling for every editing tool and restore it for
+  // the hand tool, which is the explicit pan mode.
+  const touchAction = isMobile() && state.currentTool !== 'hand' ? 'none' : '';
   document.querySelectorAll('#annotation-canvas, .annotation-canvas').forEach(el => {
     el.style.zIndex = enabled ? '2' : '6';
     el.style.pointerEvents = enabled ? 'none' : 'auto';
+    el.style.touchAction = touchAction;
+  });
+  document.querySelectorAll('#pdf-container, .mobile-pdf-container').forEach(el => {
+    el.style.touchAction = touchAction;
   });
   // Link-/formulierlagen volgen het actieve gereedschap (zie link-layer.js);
   // setTool() heeft state.currentTool al bijgewerkt voordat dit draait.
