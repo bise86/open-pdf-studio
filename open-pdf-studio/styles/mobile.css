@@ -42,6 +42,7 @@
 
 .mobile-topbar-title {
   flex: 1;
+  min-width: 0;
   font-size: 15px;
   font-weight: 500;
   overflow: hidden;
@@ -69,8 +70,13 @@
   stroke: currentColor;
 }
 
-.mobile-topbar-btn:active {
+.mobile-topbar-btn:active:not(:disabled) {
   background: var(--hover-bg);
+}
+
+.mobile-topbar-btn:disabled,
+.mobile-drawer-item:disabled {
+  opacity: 0.35;
 }
 
 /* Main content area */

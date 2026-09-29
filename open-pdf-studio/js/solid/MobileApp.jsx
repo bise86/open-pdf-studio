@@ -10,7 +10,7 @@ import { applyTheme, savePreferences } from '../core/preferences.js';
 import { getSelectedText } from '../text/text-selection.js';
 import { createTextMarkupAnnotation } from '../text/text-markup.js';
 import { setTool } from '../tools/manager.js';
-import { openDialog } from './stores/dialogStore.js';
+import { openDialog, showMessage } from './stores/dialogStore.js';
 import { undo, redo, recordBulkDelete } from '../core/undo-manager.js';
 import {
   copyPage, cutPage, pastePage, insertPagesFromFile,
@@ -48,6 +48,7 @@ export default function MobileApp() {
   const [recentFiles, setRecentFiles] = createSignal([]);
   const [copyFabVisible, setCopyFabVisible] = createSignal(false);
   const [prefsOpen, setPrefsOpen] = createSignal(false);
+  const [historyBusy, setHistoryBusy] = createSignal(false);
   let fileInputRef;
   let insertPdfInputRef;
   let replacePdfInputRef;
@@ -59,6 +60,8 @@ export default function MobileApp() {
 
   const hasDocument = () => state.documents && state.documents.length > 0;
   const currentDoc = () => hasDocument() ? state.documents[state.activeDocumentIndex] : null;
+  const undoEnabled = () => !!currentDoc()?.pdfDoc && !historyBusy() && (currentDoc()?.undoStack?.length || 0) > 0;
+  const redoEnabled = () => !!currentDoc()?.pdfDoc && !historyBusy() && (currentDoc()?.redoStack?.length || 0) > 0;
   const totalPages = () => state.documents[state.activeDocumentIndex]?.pdfDoc?.numPages || 0;
   const fileName = () => {
     const doc = currentDoc();
@@ -370,6 +373,23 @@ export default function MobileApp() {
     window.dispatchEvent(new CustomEvent('print-document'));
   }
 
+  async function handleHistoryAction(action) {
+    if (action === 'undo' ? !undoEnabled() : !redoEnabled()) return;
+    // Page changes restore the PDF asynchronously. Keep both entry points
+    // disabled until the current operation finishes.
+    setHistoryBusy(true);
+    setDrawerOpen(false);
+    setPagesOpen(false);
+    try {
+      await (action === 'undo' ? undo() : redo());
+    } catch (error) {
+      console.error(`Failed to ${action}:`, error);
+      showMessage(`${t(action)}: ${error?.message || String(error)}`);
+    } finally {
+      setHistoryBusy(false);
+    }
+  }
+
   // --- Dark mode toggle ---
 
   function handleToggleDarkMode() {
@@ -495,6 +515,22 @@ export default function MobileApp() {
           </svg>
         </button>
         <span class="mobile-topbar-title">{fileName()}</span>
+        <Show when={hasDocument()}>
+          <button class="mobile-topbar-btn" onClick={() => handleHistoryAction('undo')}
+            disabled={!undoEnabled()} title={t('undo')} aria-label={t('undo')}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 7h11a7 7 0 0 1 0 14h-3" />
+              <path d="M7 3 3 7l4 4" />
+            </svg>
+          </button>
+          <button class="mobile-topbar-btn" onClick={() => handleHistoryAction('redo')}
+            disabled={!redoEnabled()} title={t('redo')} aria-label={t('redo')}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 7H10a7 7 0 0 0 0 14h3" />
+              <path d="m17 3 4 4-4 4" />
+            </svg>
+          </button>
+        </Show>
         <button class="mobile-topbar-btn" onClick={handleToggleDarkMode} aria-label="Toggle dark mode">
           <Show when={darkMode()} fallback={
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -811,8 +847,8 @@ export default function MobileApp() {
                   <button class="mobile-drawer-item" onClick={() => replacePdfInputRef?.click()}>{t('edit')} {t('page')}</button>
                   <button class="mobile-drawer-item" onClick={() => mergePdfInputRef?.click()}>{tRibbon('organize.mergePdfs')}</button>
                   <button class="mobile-drawer-item" onClick={() => openPageDialog('extract-pages')}>{tRibbon('organize.extractPages')}</button>
-                  <button class="mobile-drawer-item" onClick={async () => { await undo(); setPagesOpen(false); }}>{t('undo')}</button>
-                  <button class="mobile-drawer-item" onClick={async () => { await redo(); setPagesOpen(false); }}>{t('redo')}</button>
+                  <button class="mobile-drawer-item" disabled={!undoEnabled()} onClick={() => handleHistoryAction('undo')}>{t('undo')}</button>
+                  <button class="mobile-drawer-item" disabled={!redoEnabled()} onClick={() => handleHistoryAction('redo')}>{t('redo')}</button>
                 </div>
               </Show>
               <div class="mobile-drawer-section-label">{t('edit')}</div>
