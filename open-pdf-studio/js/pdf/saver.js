@@ -3237,5 +3237,8 @@ export async function savePDFAs() {
     }
     return success || false;
   }
-  return false;
+  // A closed/cancelled Save As picker is not a failed write. Keep that state
+  // distinct so mobile UI does not report “save incomplete” after the user
+  // simply backs out of the destination picker.
+  return null;
 }

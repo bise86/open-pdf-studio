@@ -89,3 +89,31 @@ test('save-dialog valt terug op het geregistreerde Tauri-commando', async () => 
     options: { defaultPath: 'document.pdf', filters: [{ name: 'PDF Files', extensions: ['pdf'] }] },
   }]]);
 });
+
+test('Android save-dialog gebruikt alleen de bestandsnaam voor ACTION_CREATE_DOCUMENT', async () => {
+  const mobilePlatform = await import(`./platform.js?android-save-${Date.now()}`);
+  const aanroepen = [];
+  globalThis.window.__TAURI__ = {
+    os: { type: () => 'android' },
+    core: { invoke: async (cmd, args) => {
+      aanroepen.push([cmd, args]);
+      return 'content://com.android.providers.downloads.documents/document/rapport.pdf';
+    } },
+  };
+  assert.equal(await mobilePlatform.saveFileDialog(
+    'content://com.android.providers.downloads.documents/document/rapport%20中文.pdf',
+  ), 'content://com.android.providers.downloads.documents/document/rapport.pdf');
+  assert.equal(aanroepen[0][1].options.defaultPath, 'rapport 中文.pdf');
+});
+
+test('取消保存位置选择不会再次打开第二个选择器', async () => {
+  const mobilePlatform = await import(`./platform.js?android-cancel-${Date.now()}`);
+  let helperCalls = 0;
+  globalThis.window.__TAURI__ = {
+    os: { type: () => 'android' },
+    core: { invoke: async () => { throw new Error('File picker cancelled'); } },
+    dialog: { save: async () => { helperCalls += 1; return 'content://unexpected'; } },
+  };
+  assert.equal(await mobilePlatform.saveFileDialog('document.pdf'), null);
+  assert.equal(helperCalls, 0);
+});

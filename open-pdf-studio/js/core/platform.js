@@ -50,7 +50,8 @@ let _isMobile = null;
 export function isMobile() {
   if (_isMobile !== null) return _isMobile;
   // Allow forcing mobile mode via URL param for dev/testing
-  if (new URLSearchParams(window.location.search).has('mobile')) {
+  if (typeof window !== 'undefined' && window.location?.search &&
+      new URLSearchParams(window.location.search).has('mobile')) {
     _isMobile = true;
     return _isMobile;
   }
@@ -228,31 +229,52 @@ export async function saveFileDialog(defaultPath, filters) {
       filters = [{ name: 'PDF Files', extensions: ['pdf'] }];
     }
 
-    const options = { defaultPath: defaultPath, filters: filters };
+    // Android's ACTION_CREATE_DOCUMENT accepts a file *name*, not a desktop
+    // filesystem path. Passing a content:// URI (or a path containing the
+    // Chinese document name) as the default path can make some Android 10
+    // document providers refuse to open the picker. Keep the full path for
+    // desktop, but reduce it to a safe filename on mobile.
+    const mobile = isMobile();
+    const mobileName = mobile ? extractFileName(defaultPath) : defaultPath;
+    const options = { defaultPath: mobileName, filters: filters };
     const normalizeSaveResult = (result) => (
-      typeof result === 'string' ? result : (result?.file || result?.path || null)
+      typeof result === 'string'
+        ? result
+        : (result?.file || result?.path || result?.url || null)
+    );
+    const isCancelled = (error) => /cancel(?:led|ed)?|user.?abort/i.test(
+      String(error?.message || error || ''),
     );
 
-    // Prefer the global plugin API. Android's native plugin returns
-    // { file: "content://..." }, while desktop returns a path string.
+    let lastError = null;
+
+    // The registered command is the canonical plugin API and is available
+    // even when withGlobalTauri has not attached the optional dialog helper.
+    // Try it first so Android always goes through ACTION_CREATE_DOCUMENT.
+    try {
+      const result = normalizeSaveResult(await invoke('plugin:dialog|save', { options }));
+      return result;
+    } catch (e) {
+      if (isCancelled(e)) return null;
+      lastError = e;
+    }
+
+    // Some older WebViews expose only the global helper. Android's native
+    // helper returns { file: "content://..." }, while desktop returns a path.
     if (typeof window.__TAURI__.dialog?.save === 'function') {
       try {
         return normalizeSaveResult(await window.__TAURI__.dialog.save(options));
       } catch (e) {
-        console.error('Dialog plugin error:', e);
+        if (isCancelled(e)) return null;
+        lastError = e;
       }
     }
 
-    // withGlobalTauri can expose the core bridge before a plugin's global
-    // helper is attached. Call the registered command directly in that case;
-    // otherwise Save As silently returned null and looked like a dead button.
-    try {
-      return normalizeSaveResult(await invoke('plugin:dialog|save', { options }));
-    } catch (e) {
-      console.error('Dialog save command unavailable:', e);
-    }
-
-    return null;
+    // Do not turn a plugin/permission failure into the same null value as a
+    // user cancellation. The caller can then show the real reason instead of
+    // the misleading generic “save incomplete” message.
+    const detail = lastError?.message || String(lastError || 'unknown error');
+    throw new Error(`Save location picker unavailable: ${detail}`);
   }
 
   // Web fallback: return the suggested filename (writeBinaryFile will trigger download)

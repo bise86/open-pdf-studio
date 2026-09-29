@@ -368,10 +368,10 @@ export default function MobileApp() {
     setDrawerOpen(false);
     setSaveBusy(true);
     try {
-      const saved = await action();
-      if (saved === false) {
-        showMessage(t('saveNotCompleted', '保存未完成'));
-      }
+      // saver.js reports write errors itself. A cancelled Save As picker
+      // resolves to null, so do not turn either case into the misleading
+      // generic “save incomplete” toast here.
+      await action();
     } catch (error) {
       console.error('Save failed:', error);
       showMessage(`${t('failedToSavePdf', '保存失败')}: ${error?.message || String(error)}`);
