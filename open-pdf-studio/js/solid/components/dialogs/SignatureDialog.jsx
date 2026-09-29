@@ -146,7 +146,6 @@ export default function SignatureDialog(props) {
   let isDrawing = false;
   let strokes = [];
   let currentStroke = null;
-  let canvasSnapshot = null;
 
   const close = () => closeDialog('signature');
 
@@ -215,17 +214,35 @@ export default function SignatureDialog(props) {
     if (!point) return;
     isDrawing = true;
     currentStroke = { color: strokeColor(), points: [point] };
-    canvasSnapshot = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    // Draw the first point immediately. Keeping the previous strokes on the
+    // canvas avoids copying and restoring all 430×150 pixels on every touch
+    // event, which was the main source of Android lag.
+    ctx.fillStyle = strokeColor();
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 1, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   function continueDraw(e) {
     if (!isDrawing || !currentStroke || !ctx || !canvasRef) return;
     e.preventDefault();
-    const point = canvasPoint(e);
-    if (!point) return;
-    currentStroke.points.push(point);
-    ctx.putImageData(canvasSnapshot, 0, 0);
-    drawStroke(currentStroke);
+    const events = typeof e.getCoalescedEvents === 'function'
+      ? e.getCoalescedEvents() : [e];
+    let previous = currentStroke.points[currentStroke.points.length - 1];
+    ctx.strokeStyle = currentStroke.color;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const event of events) {
+      const point = canvasPoint(event);
+      if (!point) continue;
+      currentStroke.points.push(point);
+      ctx.beginPath();
+      ctx.moveTo(previous.x, previous.y);
+      ctx.lineTo(point.x, point.y);
+      ctx.stroke();
+      previous = point;
+    }
   }
 
   function endDraw(e) {
@@ -237,7 +254,6 @@ export default function SignatureDialog(props) {
       try { canvasRef.releasePointerCapture(e.pointerId); } catch (_) { /* already released */ }
     }
     currentStroke = null;
-    canvasSnapshot = null;
     isDrawing = false;
   }
 
@@ -367,6 +383,7 @@ export default function SignatureDialog(props) {
         <div class="sig-draw-panel">
           <canvas
             ref={canvasRef}
+            id="sig-canvas"
             width={CANVAS_WIDTH}
             height={CANVAS_HEIGHT}
             onPointerDown={startDraw}

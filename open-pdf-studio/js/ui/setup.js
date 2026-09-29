@@ -9,6 +9,8 @@ import { cacheWebFile, isTauri } from '../core/platform.js';
 import { openGesleepteBestanden } from './setup/gesleept-bestand.js';
 import { createTab } from './chrome/tabs.js';
 import { addImageFromFile } from '../annotations/image-drop.js';
+import { openDialog } from '../solid/stores/dialogStore.js';
+import { getActiveDocument } from '../core/state.js';
 
 // Sub-module imports
 import { setupWheelZoom } from './setup/navigation-events.js';
@@ -205,6 +207,22 @@ export function setupEventListeners() {
   setupDragDrop();
   setupWheelZoom();
   setupPanelResize();
+
+  // MobileApp uses DOM events for file actions because it is mounted beside
+  // the legacy canvas host. Keep the same saver used by keyboard shortcuts and
+  // the desktop menu, and report rejected saves instead of silently doing
+  // nothing when a native Android picker is cancelled or unavailable.
+  window.addEventListener('save-document', () => {
+    import('../pdf/saver.js').then(({ savePDF }) => savePDF())
+      .catch((error) => console.error('Save failed:', error));
+  });
+  window.addEventListener('save-document-as', () => {
+    import('../pdf/saver.js').then(({ savePDFAs }) => savePDFAs())
+      .catch((error) => console.error('Save As failed:', error));
+  });
+  window.addEventListener('print-document', () => {
+    openDialog('print', { currentPage: getActiveDocument()?.currentPage || 1 });
+  });
 
   // Track the cursor in app-space for the move engine — required for the
   // "hover an annotation and press G/mv" grab (it was exported but never

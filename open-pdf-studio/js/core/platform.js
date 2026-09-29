@@ -235,7 +235,10 @@ export async function saveFileDialog(defaultPath, filters) {
           defaultPath: defaultPath,
           filters: filters
         });
-        return result;
+        // Android's dialog plugin resolves to { file: "content://..." },
+        // while desktop resolves directly to a path string. Normalize both
+        // shapes so Save As passes an actual target path to the saver.
+        return typeof result === 'string' ? result : (result?.file || result?.path || null);
       } catch (e) {
         console.error('Dialog plugin error:', e);
       }
