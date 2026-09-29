@@ -519,6 +519,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
+      - name: Verify mobile file permissions before packaging
+        run: node --test scripts/mobile-capabilities.test.mjs scripts/configure-android-storage.test.mjs
+
       - name: Strip desktop sidecar from config (no sidecars on Android)
         run: node -e "const fs=require('fs');const f='src-tauri/tauri.conf.json';const c=JSON.parse(fs.readFileSync(f));delete c.bundle.externalBin;fs.writeFileSync(f,JSON.stringify(c,null,2));"
 

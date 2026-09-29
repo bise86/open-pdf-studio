@@ -3,6 +3,7 @@
   "identifier": "mobile",
   "description": "Capabilities for mobile platforms (Android/iOS)",
   "platforms": ["android", "iOS"],
+  "windows": ["main"],
   "permissions": [
     "core:default",
     "dialog:allow-open",
