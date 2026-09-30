@@ -273,6 +273,43 @@
   padding: 4px 0;
 }
 
+/* Drawing controls stay at the top of the mobile tool palette so the
+   freehand pen can be configured before it is selected. */
+.mobile-draw-options {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.mobile-draw-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary, var(--text-primary));
+  font-size: 13px;
+}
+
+.mobile-draw-color input[type="color"] {
+  width: 34px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: transparent;
+}
+
+.mobile-draw-width input[type="number"] {
+  width: 52px;
+  height: 30px;
+  padding: 2px 5px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  background: var(--bg-secondary, var(--bg-primary));
+}
+
 .mobile-tools-item {
   display: flex;
   align-items: center;

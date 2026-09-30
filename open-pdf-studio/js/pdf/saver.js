@@ -385,6 +385,23 @@ async function _savePDFNu(saveAsPath) {
     const doc = getActiveDocument();
     const docAnnotations = doc?.annotations || [];
     const ftAnnotations = docAnnotations.filter(a => a.type === 'textbox' || a.type === 'callout');
+    // WPS (and several Android PDF readers) paints a FreeText annotation's
+    // background but does not reliably resolve a Type1/WinAnsi DA/AP font.
+    // That leaves a white textbox over the original page with no visible
+    // text.  When the bundled CJK font is available, use it in the appearance
+    // stream as a real Type0 font; it carries both Chinese and Latin glyphs
+    // and is understood by WPS without relying on AcroForm defaults.
+    let textboxEmbedFont = null;
+    if (ftAnnotations.some(a => String(a.text ?? '').length > 0)) {
+      try {
+        const fontBytes = await loadDefaultOcrFontBytes();
+        textboxEmbedFont = await embedOcrFont(pdfDocLib, fontBytes);
+      } catch (fontErr) {
+        // Browser/web builds may not ship the native resource. Keep the
+        // existing WinAnsi fallback there; desktop and Android bundle it.
+        console.warn('[saver] CJK tekstlettertype kon niet worden ingesloten:', fontErr?.message || fontErr);
+      }
+    }
     if (ftAnnotations.length > 0) {
       // Collect all font names actually used
       const usedFonts = new Set();
@@ -1460,15 +1477,23 @@ async function _savePDFNu(saveAsPath) {
               // baseline), so other viewers break + place lines identically and
               // long labels no longer overflow the box.
               const ftUsedFonts = new Set();
+              // A Type0 font is needed for CJK text in readers that render
+              // the FreeText /AP directly (not through pdf.js). The bundled
+              // font is shared by all textboxes in this save; one resource
+              // name keeps each appearance stream small.
+              const customTextboxFontName = 'OPDSCJK';
               if (ann.text) {
                 const ftFontSize = ann.fontSize || 14;
                 const [tr, tg, tb] = ann.textColor ? hexToRgb(ann.textColor) : [0, 0, 0];
-                const pdfFont = mapFontToPdfName(ann.fontFamily, ann.fontBold, ann.fontItalic);
+                const pdfFont = textboxEmbedFont ? customTextboxFontName
+                  : mapFontToPdfName(ann.fontFamily, ann.fontBold, ann.fontItalic);
                 // Word-wrap against the on-screen (visual) box width — on
                 // 90/270-rotated pages ann.width/height were remapped into
                 // PDF space and would wrap against the wrong dimension.
                 // Layout over de tekst die de WinAnsi-font echt toont.
-                const apTekstvak = winAnsiTekstvak(ann);
+                // Keep Unicode when the embedded Type0 font is present. The
+                // WinAnsi conversion is only for the fallback Type1 stream.
+                const apTekstvak = textboxEmbedFont ? ann : winAnsiTekstvak(ann);
                 const layout = layoutTextboxForExport(
                   pageSwapsDims ? { ...apTekstvak, width: visW, height: visH } : apTekstvak);
                 const pad = layout.padding;
@@ -1494,13 +1519,24 @@ async function _savePDFNu(saveAsPath) {
                   // PDF-tekstruimte vanzelf door na elke Tj.
                   const chunks = (ln.chunks && ln.chunks.length) ? ln.chunks : [{ text: ln.text, bold: !!ann.fontBold, italic: !!ann.fontItalic }];
                   for (const c of chunks) {
-                    const f = mapFontToPdfName(ann.fontFamily, c.bold, c.italic);
+                    const f = textboxEmbedFont ? customTextboxFontName
+                      : mapFontToPdfName(ann.fontFamily, c.bold, c.italic);
                     ftUsedFonts.add(f);
                     if (f !== huidigFont) { ftStreamContent += `/${f} ${ftFontSize} Tf\n`; huidigFont = f; }
-                    // WinAnsi-codes als octale escapes: pdf-lib zou van '€'
-                    // anders de lage byte (0xAC, '¬') in de stream zetten.
-                    const escaped = winAnsiLiteral(c.text);
-                    ftStreamContent += `(${escaped}) Tj\n`;
+                    if (textboxEmbedFont) {
+                      // PDFFont.encodeText returns a PDFHexString containing
+                      // the font's CID values. A literal WinAnsi string would
+                      // turn Chinese into '?' (or an invalid low byte).
+                      let encoded;
+                      try { encoded = textboxEmbedFont.encodeText(c.text).toString(); }
+                      catch { encoded = '<>'; }
+                      ftStreamContent += `${encoded} Tj\n`;
+                    } else {
+                      // WinAnsi-codes als octale escapes: pdf-lib zou van
+                      // '€' anders de lage byte (0xAC, '¬') in de stream zetten.
+                      const escaped = winAnsiLiteral(c.text);
+                      ftStreamContent += `(${escaped}) Tj\n`;
+                    }
                   }
                   ftStreamContent += `${-textX} ${-textY} Td\n`;
                   textY -= lineHeight;
@@ -1514,16 +1550,24 @@ async function _savePDFNu(saveAsPath) {
 
               // Font dicts for resources — één per gebruikte variant
               // (basisstijl plus eventuele vet/cursief-runs).
-              const pdfFont = mapFontToPdfName(ann.fontFamily, ann.fontBold, ann.fontItalic);
+              const pdfFont = textboxEmbedFont ? customTextboxFontName
+                : mapFontToPdfName(ann.fontFamily, ann.fontBold, ann.fontItalic);
               ftUsedFonts.add(pdfFont);
               const ftFontResources = {};
               for (const f of ftUsedFonts) {
-                ftFontResources[f] = context.obj({
-                  Type: 'Font',
-                  Subtype: 'Type1',
-                  BaseFont: f,
-                  Encoding: 'WinAnsiEncoding'
-                });
+                if (textboxEmbedFont && f === customTextboxFontName) {
+                  // The embedded PDFFont already owns a registered Type0
+                  // dictionary. Reuse its indirect reference in the Form
+                  // XObject resources instead of manufacturing a Type1 alias.
+                  ftFontResources[f] = textboxEmbedFont.ref;
+                } else {
+                  ftFontResources[f] = context.obj({
+                    Type: 'Font',
+                    Subtype: 'Type1',
+                    BaseFont: f,
+                    Encoding: 'WinAnsiEncoding'
+                  });
+                }
               }
 
               // Use absolute BBox (same as Rect) with Matrix to translate origin

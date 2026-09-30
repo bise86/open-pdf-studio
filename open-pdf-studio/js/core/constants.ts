@@ -115,10 +115,11 @@ export const DEFAULT_PREFERENCES: Preferences = {
   defaultFontSize: 16,
   highlightOpacity: 50,
 
-  // TextBox defaults — witte achtergrond, zodat een tekstvak op een drukke
-  // (CAD-)ondergrond leesbaar is zonder eerst een vulling aan te zetten.
+  // TextBox defaults — transparant, zodat tekst direct over de bestaande
+  // PDF-inhoud kan staan. Een achtergrondkleur kan achteraf in Eigenschappen
+  // worden gekozen.
   textboxFillColor: '#FFFFFF',
-  textboxFillNone: false,
+  textboxFillNone: true,
   // A newly inserted text box has no visible border. Users can enable and
   // style the border from the properties panel when they need one.
   textboxStrokeColor: 'none',

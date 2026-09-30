@@ -125,7 +125,12 @@ export function startTextEditing(annotation) {
     'font-size': `${(annotation.fontSize || 14) * scale}px`,
     'font-family': cssFontFamily,
     color: annotation.textColor || annotation.color || '#000000',
-    'background-color': hasFill(annotation.fillColor) ? annotation.fillColor : '#ffffff',
+    // Match the committed textbox appearance. A transparent textbox should
+    // stay transparent while editing too; the old white fallback made it
+    // look as if the annotation would cover the PDF underneath.
+    'background-color': hasFill(annotation.fillColor)
+      ? annotation.fillColor
+      : (annotation.type === 'textbox' ? 'transparent' : '#ffffff'),
     ...vakOpmaak,
     'box-sizing': 'border-box',
     resize: 'none',

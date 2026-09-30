@@ -29,6 +29,7 @@ import FormFieldsBar from './components/FormFieldsBar.jsx';
 import HandtekeningBar from './components/HandtekeningBar.jsx';
 import PdfABar from './components/PdfABar.jsx';
 import { savePDF, savePDFAs } from '../pdf/saver.js';
+import { colorPickerValue, setColorPickerValue, lineWidthValue, setLineWidthValue } from './stores/ribbonStore.js';
 
 export default function MobileApp() {
   const { t } = useTranslation('common');
@@ -700,6 +701,29 @@ export default function MobileApp() {
       <Show when={toolsOpen()}>
         <div class="mobile-tools-overlay" onClick={() => setToolsOpen(false)}>
           <div class="mobile-tools-menu" onClick={(e) => e.stopPropagation()}>
+            <div class="mobile-draw-options" aria-label={tRibbon('comment.freehand', 'Freehand')}>
+              <label class="mobile-draw-color">
+                <span>{tRibbon('comment.color', 'Color')}</span>
+                <input
+                  type="color"
+                  value={colorPickerValue()}
+                  onInput={(e) => setColorPickerValue(e.currentTarget.value)}
+                  aria-label={tRibbon('comment.color', 'Color')}
+                />
+              </label>
+              <label class="mobile-draw-width">
+                <span>{tRibbon('comment.width', 'Width')}</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  step="1"
+                  value={lineWidthValue()}
+                  onInput={(e) => setLineWidthValue(Math.max(1, Math.min(20, Number(e.currentTarget.value) || 1)))}
+                  aria-label={tRibbon('comment.width', 'Width')}
+                />
+              </label>
+            </div>
             <button class="mobile-tools-item" onClick={() => applySelectionMarkup('textHighlight', '#FFFF00', 0.3, 'highlight')}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="10" width="18" height="6" rx="1" /></svg>
               <span>{tRibbon('comment.highlight')}</span>
